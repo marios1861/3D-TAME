@@ -1,3 +1,5 @@
-/scripts/pc2/
-/scripts/pc3/
 /.idea/
+/images/heatmaps/
+/dataset/ILSVRC2012_img_train
+/dataset/ILSVRC2012_img_val
+/snapshots/data/

@@ -29,7 +29,8 @@ def get_arguments():
     parser.add_argument("--snapshot_dir", type=str, default=snapshot_dir)
     parser.add_argument("--restore-dir", type=str, default='')
     parser.add_argument("--model", type=str, default='vgg16')
-    parser.add_argument("--version", type=str, default='TAME')
+    parser.add_argument("--version", type=str, default='TAME',
+                        choices=['TAME', 'Noskipconnection', 'NoskipNobatchnorm', 'Sigmoidinfeaturebranch'])
     parser.add_argument("--layers", type=str, default='features.16 features.23 features.30')
     parser.add_argument("--name", type=str, default='162_166.JPEG')
     parser.add_argument("--label", type=int, default=162)
