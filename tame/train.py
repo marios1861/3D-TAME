@@ -2,55 +2,32 @@ import argparse
 import datetime
 import json
 import os
+import sys
+from pathlib import Path
 import time
 
 import torch
 import torch.optim as optim
 from tqdm.auto import tqdm
 
-from utilities.model_prep import model_prep
-from utilities.composite_models import Generic
-from utilities import AverageMeter
-from utilities import metrics
-from utilities.load_data import data_loader
-from utilities.restore import restore
-from utilities.schedule import schedule
-
 # Paths
-os.chdir('../')
-ROOT_DIR = os.getcwd()
-print('Project Root Dir:', ROOT_DIR)
+FILE = Path(__file__).resolve()
+ROOT_DIR = FILE.parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.append(str(ROOT_DIR))
+ROOT_DIR = Path(os.path.relpath(ROOT_DIR, Path.cwd()))
+
+from utilities.schedule import schedule  # noqa: E402
+from utilities.restore import restore  # noqa: E402
+from utilities.load_data import data_loader  # noqa: E402
+from utilities import metrics  # noqa: E402
+from utilities import AverageMeter  # noqa: E402
+from utilities.composite_models import Generic  # noqa: E402
+from utilities.model_prep import model_prep  # noqa: E402
 
 
 # Static paths
-snapshot_dir = os.path.join(ROOT_DIR, 'snapshots')
-
-# Default parameters
-EPOCH = 8
-num_workers = 4
-
-
-def get_arguments():
-    parser = argparse.ArgumentParser(description='Train script')
-    parser.add_argument("--img-dir", type=str, help='Directory of training images')
-    parser.add_argument("--snapshot-dir", type=str, default=snapshot_dir)
-    parser.add_argument("--restore-from", type=str, default='')
-    parser.add_argument("--train-list", type=str)
-    parser.add_argument("--batch-size", type=int)
-    parser.add_argument("--input-size", type=int, default=256)
-    parser.add_argument("--crop-size", type=int, default=224)
-    parser.add_argument("--num-workers", type=int, default=num_workers)
-    parser.add_argument("--resume", type=str, default='True')
-    parser.add_argument("--model", type=str, default='vgg16')
-    parser.add_argument("--version", type=str, default='TAME',
-                        choices=['TAME', 'Noskipconnection', 'NoskipNobatchnorm', 'Sigmoidinfeaturebranch'])
-    parser.add_argument("--layers", type=str, default='features.16 features.23 features.30')
-    parser.add_argument("--max-lr", type=float, default=5e-5)
-    parser.add_argument("--epoch", type=int, default=EPOCH)
-    parser.add_argument("--current-epoch", type=int, default=0)
-    parser.add_argument("--global-counter", type=int, default=0)
-    parser.add_argument("--wd", type=float, default=5e-4)
-    return parser.parse_args()
+snapshot_dir = Path(os.path.relpath(FILE.parents[2] / 'snapshots', Path.cwd()))
 
 
 def save_checkpoint(args, state, filename):
@@ -79,15 +56,15 @@ def train(args):
 
     # define optimizer
     # We initially decay the learning rate by one step before the first epoch
-    weights = [weight for name, weight in model.attn_mech.named_parameters() if 'weight' in name]
-    biases = [bias for name, bias in model.attn_mech.named_parameters() if 'bias' in name]
-
-    torch.autograd.set_detect_anomaly(True)
+    weights = [weight for name,
+               weight in model.attn_mech.named_parameters() if 'weight' in name]
+    biases = [bias for name, bias in model.attn_mech.named_parameters()
+              if 'bias' in name]
 
     # noinspection PyArgumentList
     optimizer = optim.SGD([{'params': weights, 'lr': 1e-7, 'weight_decay': args.wd},
                            {'params': biases, 'lr': 1e-7 * 2}],
-                          momentum=0.9, nesterov=True)
+                          momentum=0.9, nesterov=True)  # type: ignore
     if args.restore_from != '':
         args.snapshot_dir = args.restore_from
     else:
@@ -153,7 +130,8 @@ def train(args):
             # forward pass
             logits = model(imgs, labels)
             masks = model.get_a(labels.long())
-            loss_val, loss_ce_val, loss_meanMask_val, loss_variationMask_val = model.get_loss(logits, labels, masks)
+            loss_val, loss_ce_val, loss_meanMask_val, loss_variationMask_val = model.get_loss(
+                logits, labels, masks)
 
             # gradients that aren't computed are set to None
             optimizer.zero_grad(set_to_none=True)
@@ -168,14 +146,16 @@ def train(args):
             scheduler.step()
 
             logits1 = torch.squeeze(logits)
-            prec1_1, prec5_1 = metrics.accuracy(logits1, labels.long(), topk=(1, 5))
+            prec1_1, prec5_1 = metrics.accuracy(
+                logits1, labels.long(), topk=(1, 5))
             top1.update(prec1_1[0], imgs.size()[0])
             top5.update(prec5_1[0], imgs.size()[0])
 
             # imgs.size()[0] is simply the batch size
             losses.update(loss_val.item(), imgs.size()[0])
             losses_meanMask.update(loss_meanMask_val.item(), imgs.size()[0])
-            losses_variationMask.update(loss_variationMask_val.item(), imgs.size()[0])
+            losses_variationMask.update(
+                loss_variationMask_val.item(), imgs.size()[0])
             losses_ce.update(loss_ce_val.item(), imgs.size()[0])
             batch_time.update(time.perf_counter() - end)
             end = time.perf_counter()
@@ -183,7 +163,7 @@ def train(args):
             # every samples_interval batches we update the postfix
             if global_counter % samples_interval == 0:
                 eta_seconds = ((total_epoch - current_epoch) * steps_per_epoch + (
-                            steps_per_epoch - idx)) * batch_time.avg
+                    steps_per_epoch - idx)) * batch_time.avg
                 eta_str = (datetime.timedelta(seconds=int(eta_seconds)))
                 postfix = {'ETA': eta_str, 'Total Loss': losses.avg, 'CE Loss': losses_ce.avg,
                            'Mean Loss': losses_meanMask.avg, 'Var Loss': losses_variationMask.avg,
@@ -211,8 +191,35 @@ def train(args):
                         },
                         filename=f'epoch_{current_epoch}.pt')
 
+
+def get_arguments():
+    parser = argparse.ArgumentParser(description='Train script')
+    parser.add_argument("--img-dir", type=str,
+                        help='Directory of training images')
+    parser.add_argument("--snapshot-dir", type=str, default=snapshot_dir)
+    parser.add_argument("--restore-from", type=str, default='')
+    parser.add_argument("--train-list", type=str)
+    parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--input-size", type=int, default=256)
+    parser.add_argument("--crop-size", type=int, default=224)
+    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--resume", type=str, default='True')
+    parser.add_argument("--model", type=str, default='vgg16')
+    parser.add_argument("--version", type=str, default='TAME',
+                        choices=['TAME', 'Noskipconnection', 'NoskipNobatchnorm', 'Sigmoidinfeaturebranch'])
+    parser.add_argument("--layers", type=str,
+                        default='features.16 features.23 features.30')
+    parser.add_argument("--max-lr", type=float, default=5e-5)
+    parser.add_argument("--epoch", type=int, default=8)
+    parser.add_argument("--current-epoch", type=int, default=0)
+    parser.add_argument("--global-counter", type=int, default=0)
+    parser.add_argument("--wd", type=float, default=5e-4)
+    return parser.parse_args()
+
+
 def main(args):
-    args.train_list = os.path.join(ROOT_DIR, 'datalist', 'ILSVRC', args.train_list)
+    args.train_list = os.path.join(
+        ROOT_DIR, 'datalist', 'ILSVRC', args.train_list)
     print('Running parameters:\n')
     print(json.dumps(vars(args), indent=4))
     if not os.path.exists(args.snapshot_dir):

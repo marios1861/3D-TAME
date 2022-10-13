@@ -9,12 +9,8 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from utilities import metrics
-from utilities.avg_meter import AverageMeter
-from utilities.composite_models import Generic
-from utilities.load_data import data_loader
-from utilities.model_prep import model_prep
-from utilities.restore import restore
+if __name__ != '__main__':
+    from . import utilities
 
 # Paths
 os.chdir('../')
