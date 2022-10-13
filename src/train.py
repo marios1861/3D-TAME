@@ -10,8 +10,8 @@ from tqdm.auto import tqdm
 
 from utilities.model_prep import model_prep
 from utilities.composite_models import Generic
-from utilities.avg_meter import AverageMeter
-import utilities.metrics as metrics
+from utilities import AverageMeter
+from utilities import metrics
 from utilities.load_data import data_loader
 from utilities.restore import restore
 from utilities.schedule import schedule
@@ -211,15 +211,15 @@ def train(args):
                         },
                         filename=f'epoch_{current_epoch}.pt')
 
-def main():
-    cmd_args = get_arguments()
-    cmd_args.train_list = os.path.join(ROOT_DIR, 'datalist', 'ILSVRC', cmd_args.train_list)
+def main(args):
+    args.train_list = os.path.join(ROOT_DIR, 'datalist', 'ILSVRC', args.train_list)
     print('Running parameters:\n')
-    print(json.dumps(vars(cmd_args), indent=4))
-    if not os.path.exists(cmd_args.snapshot_dir):
-        os.mkdir(cmd_args.snapshot_dir)
-    train(cmd_args)
+    print(json.dumps(vars(args), indent=4))
+    if not os.path.exists(args.snapshot_dir):
+        os.mkdir(args.snapshot_dir)
+    train(args)
 
 
 if __name__ == '__main__':
-    main()
+    cmd_args = get_arguments()
+    main(cmd_args)
