@@ -1,34 +1,35 @@
 # checked, should be working correctly, there are differences arising from the use of torchvision.transforms
 import os
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
+
 def data_loader(cfg: Dict[str, Any]) -> Tuple[DataLoader, ...]:
 
-    tsfm_train = transforms.Compose([
-            transforms.Resize(cfg['input_size']),
-            transforms.RandomCrop(cfg['crop_size']),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ])
+    tsfm_train = transforms.Compose(
+        [transforms.Resize(cfg['input_size']),
+         transforms.RandomCrop(cfg['crop_size']),
+         transforms.RandomHorizontalFlip(),
+         transforms.ToTensor(),
+         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+         ])
 
-    tsfm_val = transforms.Compose([
-        transforms.Resize(cfg['input_size']),
-        transforms.CenterCrop(cfg['crop_size']),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
+    tsfm_val = transforms.Compose(
+        [transforms.Resize(cfg['input_size']),
+         transforms.CenterCrop(cfg['crop_size']),
+         transforms.ToTensor(),
+         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+         ])
     dataset_train = MyDataset(Path(cfg['dataset']) / 'ILSVRC2012_img_train', Path(cfg['datalist']) / f"{cfg['model']}_train.txt",
-                          transform=tsfm_train)
+                              transform=tsfm_train)
     dataset_val = MyDataset(Path(cfg['dataset']) / 'ILSVRC2012_img_val', Path(cfg['datalist']) / "Validation_2000.txt",
-                        transform=tsfm_val)
+                            transform=tsfm_val)
     dataset_test = MyDataset(Path(cfg['dataset']) / 'ILSVRC2012_img_val', Path(cfg['datalist']) / "Evaluation_2000.txt",
-                        transform=tsfm_val)
+                             transform=tsfm_val)
 
     train_loader = DataLoader(dataset_train, batch_size=cfg['batch_size'], shuffle=True, num_workers=cfg['num_workers'],
                               pin_memory=True)
@@ -36,7 +37,7 @@ def data_loader(cfg: Dict[str, Any]) -> Tuple[DataLoader, ...]:
     val_loader = DataLoader(dataset_val, batch_size=cfg['batch_size'], shuffle=False, num_workers=cfg['num_workers'],
                             pin_memory=True)
     test_loader = DataLoader(dataset_test, batch_size=cfg['batch_size'], shuffle=False, num_workers=cfg['num_workers'],
-                            pin_memory=True)
+                             pin_memory=True)
 
     return train_loader, val_loader, test_loader
 

@@ -1,31 +1,18 @@
 import argparse
-import datetime
-import json
-import os
-import sys
 from pathlib import Path
-import time
 from typing import Any, Dict
 
 import torch
-import torch.optim as optim
-from tqdm.auto import tqdm
 import yaml
-
-# Paths
-FILE = Path(__file__).resolve()
-ROOT_DIR = FILE.parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.append(str(ROOT_DIR))
-ROOT_DIR = Path(os.path.relpath(ROOT_DIR, Path.cwd()))
-
-from . import utilities as utils
-from utilities.metrics import accuracy
+from torch.cuda import amp
+from tqdm.auto import tqdm
 from utilities import AverageMeter
 
+from . import utilities as utils
+from . import val
 
 
-def train(cfg: Dict[str, Any], args):
+def train(cfg: Dict[str, Any], args: Dict[str, Any]):
     # Dataloaders
     train_loader, val_loader, _ = utils.data_loader(cfg)
 
@@ -36,133 +23,92 @@ def train(cfg: Dict[str, Any], args):
     optimizer = utils.get_optim(cfg, model)
 
     # Attempt to reload
-    if not args.redo:
-        last_epoch = utils.load_model(cfg, model, optimizer, best=False)
+    if not args["redo"]:
+        # load the latest epoch, or the epoch supplied by args
+        last_epoch = utils.load_model(args["cfg"],
+                                      cfg, model,
+                                      optimizer,
+                                      args.get("epoch"))
     else:
         last_epoch = 0
-    
+
     # Scheduler
-    
+    scheduler = utils.get_schedule(cfg, optimizer, len(train_loader), last_epoch)
 
-    # freeze classifier
-    model.requires_grad_(requires_grad=False)
-    model.attn_mech.requires_grad_()
-
-    model.train()
-
-    train_loader = data_loader(args)
-    steps_per_epoch = len(train_loader)
-
-    with open(os.path.join(args.snapshot_dir, 'train_record.json'), 'a') as fw:
-        config = json.dumps(vars(args), indent=4, separators=(',', ':'))
-        fw.write(config)
-        fw.write('\n\n')
-
-    total_epoch = args.epoch
-    global_counter = args.global_counter
-    current_epoch = args.current_epoch
-
-    # last epoch sets the correct LR when restarting model
-    # First, create loss curve to find correct base_lr and max_lr
-    scheduler = schedule(args, optimizer, steps_per_epoch)
-
-    end = time.perf_counter()
-    max_iter = total_epoch * steps_per_epoch
-    print('Max iter:', max_iter)
-    batch_time = utils.AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
-    losses_meanMask = AverageMeter()  # Mask energy loss
-    losses_variationMask = AverageMeter()  # Mask variation loss
-    losses_ce = AverageMeter()
+    # Train
+    scaler = amp.GradScaler()
+    epochs = cfg['epochs']
+    print(f"{'Epoch':>5}{'GPU_mem':>7}"
+          f"{'train_loss: total':>18}{'CE':>2}{'Area':>4}{'Var':>3}{'top 1':>5}{'top 5':>5}"
+          f"{'val_loss: total':>16}{'CE':>2}{'Area':>4}{'Var':>3}{'top 1':>5}{'top 5':>5}")  # 75 characters
     # Epoch loop
-    while current_epoch < total_epoch:
-        losses.reset()
-        losses_meanMask.reset()
-        losses_variationMask.reset()  # Mask variation loss
-        losses_ce.reset()  # (1-mask)*img cross entropy loss
-        top1.reset()
-        top5.reset()
-        batch_time.reset()
-        disp_time = time.perf_counter()
-        sample_freq = 100
-        samples_interval = int(steps_per_epoch / sample_freq)
-
+    for epoch in range(last_epoch, epochs):
+        top1 = AverageMeter()
+        top5 = AverageMeter()
+        loss = AverageMeter()
+        loss_ce = AverageMeter()
+        loss_mean_mask = AverageMeter()  # Mask energy loss
+        loss_var_mask = AverageMeter()  # Mask variation loss
+        model.train()
+        pbar = tqdm(enumerate(train_loader), total=len(train_loader),
+                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
         # Batch loop
-        tq_loader = tqdm(train_loader,
-                         desc=f'Epoch {current_epoch}',
-                         unit='batches',
-                         bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [Batch ETA: {remaining}, {rate_fmt}{postfix}]',
-                         miniters=sample_freq)
-
-        for idx, dat in enumerate(tq_loader):
-            imgs, labels = dat
-            imgs, labels = imgs.cuda(), labels.cuda()
+        for i, (images, labels) in pbar:
+            images, labels = images.cuda(), labels.cuda()
 
             # forward pass
-            logits = model(imgs, labels)
-            masks = model.get_a(labels.long())
-            loss_val, loss_ce_val, loss_meanMask_val, loss_variationMask_val = model.get_loss(
-                logits, labels, masks)
+            with amp.autocast():
+                logits = model(images, labels)
+                masks = model.get_a(labels.long())
+                loss_val, loss_ce_val, loss_mean_mask_val, loss_var_mask_val = model.get_loss(
+                    logits, labels, masks)
+            # Backward
+            scaler.scale(loss_val).backward()
 
-            # gradients that aren't computed are set to None
+            # Optimize
+            scaler.unscale_(optimizer)  # unscale gradients
+            torch.nn.utils.clip_grad_norm_(model.attn_mech.parameters(), max_norm=10.0)
+            scaler.step(optimizer)
+            scaler.update()
             optimizer.zero_grad(set_to_none=True)
 
-            # backwards pass
-            loss_val.backward()
-
-            # optimizer step
-            optimizer.step()
-
-            # lr reduction step
-            scheduler.step()
+            # Skip 10 first batches to make sure that loss gradient
+            # has stabilized enough for step to run step
+            if i > 10:
+                scheduler.step()
 
             logits1 = torch.squeeze(logits)
-            prec1_1, prec5_1 = metrics.accuracy(
+            top1_val, top5_val = utils.accuracy(
                 logits1, labels.long(), topk=(1, 5))
-            top1.update(prec1_1[0], imgs.size()[0])
-            top5.update(prec5_1[0], imgs.size()[0])
+            top1.update(top1_val[0], images.size()[0])
+            top5.update(top5_val[0], images.size()[0])
 
             # imgs.size()[0] is simply the batch size
-            losses.update(loss_val.item(), imgs.size()[0])
-            losses_meanMask.update(loss_meanMask_val.item(), imgs.size()[0])
-            losses_variationMask.update(
-                loss_variationMask_val.item(), imgs.size()[0])
-            losses_ce.update(loss_ce_val.item(), imgs.size()[0])
-            batch_time.update(time.perf_counter() - end)
-            end = time.perf_counter()
+            loss.update(loss_val.item(), images.size()[0])
+            loss_mean_mask.update(loss_mean_mask_val.item(), images.size()[0])
+            loss_var_mask.update(
+                loss_var_mask_val.item(), images.size()[0])
+            loss_ce.update(loss_ce_val.item(), images.size()[0])
+            mem = '%.3gG' % (torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0)  # (GB)
+            pbar.desc = (f"{f'{epoch + 1}/{epochs}':>5}{mem:>7}"
+                         f"{loss.avg:>18}{loss_ce.avg:>2}{loss_mean_mask.avg:>4}"
+                         f"{loss_var_mask:>3}{top1:>5}{top5:>5}" + ' ' * 35)
 
-            # every samples_interval batches we update the postfix
-            if global_counter % samples_interval == 0:
-                eta_seconds = ((total_epoch - current_epoch) * steps_per_epoch + (
-                    steps_per_epoch - idx)) * batch_time.avg
-                eta_str = (datetime.timedelta(seconds=int(eta_seconds)))
-                postfix = {'ETA': eta_str, 'Total Loss': losses.avg, 'CE Loss': losses_ce.avg,
-                           'Mean Loss': losses_meanMask.avg, 'Var Loss': losses_variationMask.avg,
-                           'Top1 Acc': top1.avg, 'Top5 Acc': top5.avg}
-                tq_loader.set_postfix(postfix)
+            # Val
+            if i == len(pbar) - 1:
+                model.half()
+                stats = val.run(model=model.eval(),
+                                dataloader=val_loader,
+                                pbar=pbar)
+                model.float()
 
-                losses.reset()
-                losses_meanMask.reset()
-                losses_variationMask.reset()
-                losses_ce.reset()
-                top1.reset()
-                top5.reset()
-
-            global_counter += 1
-
-        current_epoch += 1
         # first epoch: 1, during training it is current_epoch == 0, saved as epoch_1 ...
         # last epoch: 8, during training it is current_epoch ==7, saved as epoch_8
-        save_checkpoint(args,
-                        {
-                            'epoch': current_epoch,
-                            'global_counter': global_counter,
-                            'state_dict': model.attn_mech.state_dict(),
-                            'optimizer': optimizer.state_dict()
-                        },
-                        filename=f'epoch_{current_epoch}.pt')
+        utils.save_model(cfg["cfg"],
+                         cfg,
+                         model,
+                         optimizer,
+                         epoch)
 
 
 def get_arguments():
@@ -196,7 +142,7 @@ def main(args):
     print('Running parameters:\n')
     print(yaml.dump(vars(args), indent=4))
     cfg = utils.load_config(ROOT_DIR / "configs", args.cfg)
-    train(cfg, args)
+    train(cfg, vars(args))
 
 
 if __name__ == '__main__':

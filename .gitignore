@@ -3,6 +3,6 @@
 /dataset/ILSVRC2012_img_train
 /dataset/ILSVRC2012_img_val
 /snapshots/data/
-/.vscode/
 /venv/
 /.ipynb_checkpoints
+*.pyc

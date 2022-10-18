@@ -1,11 +1,9 @@
-import json
-
 from torchvision import models
 from torchvision.models.feature_extraction import get_graph_node_names
 
 from utilities.composite_models import Generic
 
-mdl = models.vgg16(pretrained=True)
+mdl = models.vit_b_16(pretrained=True)
 
 
 def model(feature_layers):
