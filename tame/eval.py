@@ -9,8 +9,9 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-if __name__ != '__main__':
-    from . import utilities
+from . import utilities as utils
+from utilities import metrics
+
 
 # Paths
 os.chdir('../')
@@ -42,9 +43,9 @@ def get_arguments():
 
 
 def get_model(args):
-    mdl = model_prep(args.model)
-    mdl = Generic(mdl, args.layers.split(), args.version)
-    restore(args, mdl, istrain=False)
+    mdl = utils.model_prep(args.model)
+    mdl = utils.Generic(mdl, args.layers.split(), args.version)
+    utils.restore(args, mdl, istrain=False)
     mdl.cuda()
     return mdl
 
@@ -56,7 +57,7 @@ def main():
 
     args.test_list = os.path.join(ROOT_DIR, 'datalist', 'ILSVRC', args.test_list)
 
-    val_loader = data_loader(args, train=False)
+    val_loader = utils.data_loader(args, train=False)
     data_dir = os.path.join(args.snapshot_dir, 'data', 'results')
     os.makedirs(data_dir, exist_ok=True)
     with open(os.path.join(data_dir,
@@ -74,13 +75,13 @@ def main():
             model.eval()
             for percent in [0, 0.5, 0.85]:
 
-                top1 = AverageMeter()
-                top5 = AverageMeter()
+                top1 = utils.AverageMeter()
+                top5 = utils.AverageMeter()
                 top1.reset()
                 top5.reset()
 
-                top1_ = AverageMeter()
-                top5_ = AverageMeter()
+                top1_ = utils.AverageMeter()
+                top5_ = utils.AverageMeter()
                 top1_.reset()
                 top5_.reset()
 

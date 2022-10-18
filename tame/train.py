@@ -5,10 +5,12 @@ import os
 import sys
 from pathlib import Path
 import time
+from typing import Any, Dict
 
 import torch
 import torch.optim as optim
 from tqdm.auto import tqdm
+import yaml
 
 # Paths
 FILE = Path(__file__).resolve()
@@ -17,65 +19,30 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 ROOT_DIR = Path(os.path.relpath(ROOT_DIR, Path.cwd()))
 
-from utilities.schedule import schedule  # noqa: E402
-from utilities.restore import restore  # noqa: E402
-from utilities.load_data import data_loader  # noqa: E402
-from utilities import metrics  # noqa: E402
-from utilities import AverageMeter  # noqa: E402
-from utilities.composite_models import Generic  # noqa: E402
-from utilities.model_prep import model_prep  # noqa: E402
+from . import utilities as utils
+from utilities.metrics import accuracy
+from utilities import AverageMeter
 
 
-# Static paths
-snapshot_dir = Path(os.path.relpath(FILE.parents[2] / 'snapshots', Path.cwd()))
 
+def train(cfg: Dict[str, Any], args):
+    # Dataloaders
+    train_loader, val_loader, _ = utils.data_loader(cfg)
 
-def save_checkpoint(args, state, filename):
-    save_path = os.path.join(args.snapshot_dir, filename)
-    torch.save(state, save_path)
+    # Model
+    model = utils.get_model(cfg)
 
+    # Optimizer
+    optimizer = utils.get_optim(cfg, model)
 
-def get_model(args):
-    mdl = model_prep(args.model)
-    mdl = Generic(mdl, args.layers.split(), args.version)
-    mdl.cuda()
-    return mdl
-
-
-def train(args):
-
-    batch_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
-    losses_meanMask = AverageMeter()  # Mask energy loss
-    losses_variationMask = AverageMeter()  # Mask variation loss
-    losses_ce = AverageMeter()
-
-    model = get_model(args)
-
-    # define optimizer
-    # We initially decay the learning rate by one step before the first epoch
-    weights = [weight for name,
-               weight in model.attn_mech.named_parameters() if 'weight' in name]
-    biases = [bias for name, bias in model.attn_mech.named_parameters()
-              if 'bias' in name]
-
-    # noinspection PyArgumentList
-    optimizer = optim.SGD([{'params': weights, 'lr': 1e-7, 'weight_decay': args.wd},
-                           {'params': biases, 'lr': 1e-7 * 2}],
-                          momentum=0.9, nesterov=True)  # type: ignore
-    if args.restore_from != '':
-        args.snapshot_dir = args.restore_from
+    # Attempt to reload
+    if not args.redo:
+        last_epoch = utils.load_model(cfg, model, optimizer, best=False)
     else:
-        args.snapshot_dir = os.path.join(snapshot_dir,
-                                         f'{args.model}_{args.version}', '')
-    os.makedirs(args.snapshot_dir, exist_ok=True)
-    if args.resume == 'True':
-        restore(args, model, optimizer)
-        if args.current_epoch > args.epoch:
-            print('Training Finished')
-            return
+        last_epoch = 0
+    
+    # Scheduler
+    
 
     # freeze classifier
     model.requires_grad_(requires_grad=False)
@@ -102,7 +69,13 @@ def train(args):
     end = time.perf_counter()
     max_iter = total_epoch * steps_per_epoch
     print('Max iter:', max_iter)
-
+    batch_time = utils.AverageMeter()
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+    losses_meanMask = AverageMeter()  # Mask energy loss
+    losses_variationMask = AverageMeter()  # Mask variation loss
+    losses_ce = AverageMeter()
     # Epoch loop
     while current_epoch < total_epoch:
         losses.reset()
@@ -218,13 +191,12 @@ def get_arguments():
 
 
 def main(args):
-    args.train_list = os.path.join(
-        ROOT_DIR, 'datalist', 'ILSVRC', args.train_list)
+    FILE = Path(__file__).resolve()
+    ROOT_DIR = FILE.parents[1]
     print('Running parameters:\n')
-    print(json.dumps(vars(args), indent=4))
-    if not os.path.exists(args.snapshot_dir):
-        os.mkdir(args.snapshot_dir)
-    train(args)
+    print(yaml.dump(vars(args), indent=4))
+    cfg = utils.load_config(ROOT_DIR / "configs", args.cfg)
+    train(cfg, args)
 
 
 if __name__ == '__main__':

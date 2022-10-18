@@ -1,9 +1,15 @@
 import os
-
+from typing import Any, Dict, Optional
+from torch.optim import Optimizer
 import torch
 
+from .composite_models import Generic
 
-def restore(args, model, optimizer=None, istrain=True):
+def restore(
+    cfg: Dict[str, Any],
+    model: Generic,
+    optimizer: Optional[Optimizer] = None,
+    best: bool = False):
     if os.path.isfile(args.restore_from) and ('.pt' in args.restore_from):
         snapshot = args.restore_from
     else:
