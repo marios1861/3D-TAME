@@ -1,6 +1,5 @@
 {
-	"python.analysis.typeCheckingMode": "basic",
-	"python.formatting.provider": "autopep8",
+	"python.formatting.provider": "black",
 	"python.linting.flake8Enabled": true,
 	"python.linting.enabled": true,
 	"python.terminal.activateEnvironment": true

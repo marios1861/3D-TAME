@@ -1,0 +1,14 @@
+input_size: 256
+crop_size: 224
+dataset:  # Path to dataset dir
+datalist:  # Path to datalist dir
+model:  vgg16  # Model name
+batch_size: 32
+num_workers: 8
+layers: 'features.16 features.23 features.30'
+version: TAME  # Or Noskipconnection, NoskipNobatchnorm, Sigmoidinfeaturebranch
+optimizer: SGD  # Or Adam, Adamw, RMSProp
+snapshot_dir: /home/thermidemon/Documents/T-TAME/snapshots  # Path to snapshot dir
+lr: 5e-5  # max lr in onecyclelr
+epochs: 8  # training epochs
+

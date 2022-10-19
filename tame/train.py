@@ -1,6 +1,13 @@
+"""
+Train a attention mechanism model on a pretrained classifier
+
+Usage:
+    $ python tame/train.py --cfg resnet50_SGD.yaml --epoch -1
+"""
+
 import argparse
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import torch
 import yaml
@@ -23,7 +30,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
     optimizer = utils.get_optim(cfg, model)
 
     # Attempt to reload
-    if not args["redo"]:
+    if args["epoch"] != -1:
         # load the latest epoch, or the epoch supplied by args
         last_epoch = utils.load_model(args["cfg"],
                                       cfg, model,
@@ -113,26 +120,11 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Train script')
-    parser.add_argument("--img-dir", type=str,
-                        help='Directory of training images')
-    parser.add_argument("--snapshot-dir", type=str, default=snapshot_dir)
-    parser.add_argument("--restore-from", type=str, default='')
-    parser.add_argument("--train-list", type=str)
-    parser.add_argument("--batch-size", type=int)
-    parser.add_argument("--input-size", type=int, default=256)
-    parser.add_argument("--crop-size", type=int, default=224)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--resume", type=str, default='True')
-    parser.add_argument("--model", type=str, default='vgg16')
-    parser.add_argument("--version", type=str, default='TAME',
-                        choices=['TAME', 'Noskipconnection', 'NoskipNobatchnorm', 'Sigmoidinfeaturebranch'])
-    parser.add_argument("--layers", type=str,
-                        default='features.16 features.23 features.30')
-    parser.add_argument("--max-lr", type=float, default=5e-5)
-    parser.add_argument("--epoch", type=int, default=8)
-    parser.add_argument("--current-epoch", type=int, default=0)
-    parser.add_argument("--global-counter", type=int, default=0)
-    parser.add_argument("--wd", type=float, default=5e-4)
+    parser.add_argument("--cfg", type=str, default='default.yaml',
+                        help='config script name (not path)')
+    parser.add_argument(
+        "--epoch", type=Optional[int], default=None,
+        help='Epoch to load, defaults to latest epoch saved. -1 to restart training')
     return parser.parse_args()
 
 

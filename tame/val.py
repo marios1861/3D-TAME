@@ -13,35 +13,6 @@ from . import utilities as utils
 from utilities import metrics
 
 
-# Paths
-os.chdir('../')
-ROOT_DIR = os.getcwd()
-print('Project Root Dir:', ROOT_DIR)
-
-# Static paths
-snapshot_dir = os.path.join(ROOT_DIR, 'snapshots')
-
-
-def get_arguments():
-    parser = argparse.ArgumentParser(description='Evaluation script')
-    parser.add_argument("--val-dir", type=str)
-    parser.add_argument("--snapshot-dir", type=str, default=snapshot_dir)
-    parser.add_argument("--restore-from", type=str, default='')
-    parser.add_argument("--test-list", type=str)
-    parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--input-size", type=int, default=256)
-    parser.add_argument("--crop-size", type=int, default=224)
-    parser.add_argument("--num-workers", type=int, default=0)
-    parser.add_argument("--model", type=str, default='vgg16')
-    parser.add_argument("--version", type=str, default='TAME',
-                        choices=['TAME', 'Noskipconnection', 'NoskipNobatchnorm', 'Sigmoidinfeaturebranch'])
-    parser.add_argument("--layers", type=str, default='features.16 features.23 features.30')
-    parser.add_argument("--global-counter", type=int, default=0)
-    parser.add_argument("--start-epoch", type=int, default=1)
-    parser.add_argument("--end-epoch", type=int, default=8)
-    return parser.parse_args()
-
-
 def get_model(args):
     mdl = utils.model_prep(args.model)
     mdl = utils.Generic(mdl, args.layers.split(), args.version)
@@ -137,5 +108,26 @@ def main():
             print(f"epoch {epoch} evaluation finished")
 
 
+def get_arguments():
+    parser = argparse.ArgumentParser(description='Evaluation script')
+    parser.add_argument("--val-dir", type=str)
+    parser.add_argument("--snapshot-dir", type=str, default=snapshot_dir)
+    parser.add_argument("--restore-from", type=str, default='')
+    parser.add_argument("--test-list", type=str)
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--input-size", type=int, default=256)
+    parser.add_argument("--crop-size", type=int, default=224)
+    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--model", type=str, default='vgg16')
+    parser.add_argument("--version", type=str, default='TAME',
+                        choices=['TAME', 'Noskipconnection', 'NoskipNobatchnorm', 'Sigmoidinfeaturebranch'])
+    parser.add_argument("--layers", type=str, default='features.16 features.23 features.30')
+    parser.add_argument("--global-counter", type=int, default=0)
+    parser.add_argument("--start-epoch", type=int, default=1)
+    parser.add_argument("--end-epoch", type=int, default=8)
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    main()
+    cmd_opt = get_arguments()
+    main(cmd_opt)

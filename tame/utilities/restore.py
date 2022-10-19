@@ -45,6 +45,7 @@ def save_model(
 def get_checkpoint_dir(cfg_name: str,
                        cfg: Dict[str, Any],
                        epoch: Optional[int] = None) -> Path:
+    cfg_name = Path(cfg_name).stem  # remove file extension:
     # we have already read the snapshot_ids.csv file
     if 'checkpoint_dir' in cfg.keys():
         checkpoint_dir = cfg["checkpoint_dir"]

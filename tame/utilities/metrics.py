@@ -7,11 +7,13 @@ import torchvision.transforms as transforms
 from sklearn import metrics
 
 
-def show_cam_on_image(img: np.ndarray,
-                      mask: np.ndarray,
-                      use_rgb: bool = True,
-                      colormap: int = cv2.COLORMAP_JET) -> np.ndarray:
-    """ This function overlays the cam mask on the image as an heatmap.
+def show_cam_on_image(
+    img: np.ndarray,
+    mask: np.ndarray,
+    use_rgb: bool = True,
+    colormap: int = cv2.COLORMAP_JET,
+) -> np.ndarray:
+    """This function overlays the cam mask on the image as an heatmap.
     By default the heatmap is in BGR format.
     :param img: The base image in RGB or BGR format.
     :param mask: The cam mask.
@@ -33,8 +35,7 @@ def show_cam_on_image(img: np.ndarray,
     heatmap = np.float32(heatmap) / 255
 
     if np.max(img) > 1:
-        raise Exception(
-            "The input image should np.float32 in the range [0, 1]")
+        raise Exception("The input image should np.float32 in the range [0, 1]")
 
     cam = heatmap + img
     cam = cam / np.max(cam)
@@ -55,9 +56,9 @@ def normalizeMinMax4Dtensor(Att_map):
 
 
 def normalizeMinMax(cam_map):
-    cam_map_min, cam_map_max = cam_map.min(), cam_map.max()
-    cam_map -= torch.min(cam_map)
-    cam_map /= (torch.max(cam_map) - torch.min(cam_map))
+    cam_map_min, cam_map_max = torch.max(cam_map) - torch.min(cam_map)
+    cam_map -= cam_map_min
+    cam_map /= cam_map_max - cam_map_min
     return cam_map
 
 
@@ -79,7 +80,9 @@ def drop_Npercent(cam_map, percent):
     if k >= 1:
         indices = torch.nonzero(cam_map == m.values)
         for pi in range(0, int(k)):
-            cam_map_tmp[indices[pi][0], indices[pi][1], indices[pi][2], indices[pi][3]] = 0
+            cam_map_tmp[
+                indices[pi][0], indices[pi][1], indices[pi][2], indices[pi][3]
+            ] = 0
     cam_map = cam_map_tmp
     #   cam_map[cam_map!=0] = 1
     # k = torch.count_nonzero(cam_map_tmp>0) - num_pixels
@@ -88,17 +91,19 @@ def drop_Npercent(cam_map, percent):
 
 
 def normalize(tensor):
-    normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(tensor)
+    normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(
+        tensor
+    )
     return normalize
 
 
 def accuracy(logits, target, topk=(1,)):
-    '''
+    """
     Compute the top k accuracy of classification results.
     :param target: the ground truth label
     :param topk: tuple or list of the expected k values.
     :return: A list of the accuracy values. The list has the same lenght with para: topk
-    '''
+    """
     maxk = max(topk)
     batch_size = target.size(0)
     scores = logits
@@ -128,16 +133,16 @@ def _to_numpy(v):
 
 
 def AD(Yc_realImage, Yc_E):
-    L = (sum(np.divide((Yc_realImage - Yc_E).clip(min=0)
-                       , Yc_realImage))
-         * (100 / len(Yc_realImage)))
+    L = sum(np.divide((Yc_realImage - Yc_E).clip(min=0), Yc_realImage)) * (
+        100 / len(Yc_realImage)
+    )
     # print('AD', L)
     return L
 
 
 def IC(Yc_realImage, Yc_E):
     dif = Yc_E - Yc_realImage
-    sum_ = (sum(i > 0 for i in dif))
+    sum_ = sum(i > 0 for i in dif)
     count = sum_ * (100.0 / len(Yc_realImage))
     #  print('IC',count)
     return count
