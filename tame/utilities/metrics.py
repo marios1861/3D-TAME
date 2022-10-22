@@ -8,8 +8,8 @@ from sklearn import metrics
 
 
 def show_cam_on_image(
-    img: np.ndarray,
-    mask: np.ndarray,
+    img,
+    mask,
     use_rgb: bool = True,
     colormap: int = cv2.COLORMAP_JET,
 ) -> np.ndarray:
@@ -29,17 +29,17 @@ def show_cam_on_image(
     img = img[0, :, :, :]
     img = np.transpose(img, (1, 2, 0))
 
-    heatmap = cv2.applyColorMap(np.uint8(255 * mask), colormap)
+    heatmap = cv2.applyColorMap(np.uint8(255 * mask), colormap)  # type: ignore
     if use_rgb:
         heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-    heatmap = np.float32(heatmap) / 255
+    heatmap = np.float32(heatmap) / 255  # type: ignore
 
     if np.max(img) > 1:
         raise Exception("The input image should np.float32 in the range [0, 1]")
 
     cam = heatmap + img
     cam = cam / np.max(cam)
-    return np.uint8(255 * cam)
+    return np.uint8(255 * cam)  # type: ignore
 
 
 def normalizeWithMax(Att_map):
@@ -97,7 +97,7 @@ def normalize(tensor):
     return normalize
 
 
-def accuracy(logits, target, topk=(1,)):
+def accuracy(logits: torch.Tensor, target: torch.Tensor, topk=(1,)):
     """
     Compute the top k accuracy of classification results.
     :param target: the ground truth label
@@ -108,7 +108,7 @@ def accuracy(logits, target, topk=(1,)):
     batch_size = target.size(0)
     scores = logits
     _, pred = scores.topk(maxk, 1, True, True)
-    pred = pred.t()
+    pred: torch.Tensor = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
     res = []
     for k in topk:

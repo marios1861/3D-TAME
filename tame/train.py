@@ -1,5 +1,5 @@
 """
-Train a attention mechanism model on a pretrained classifier
+Train an attention mechanism model on a pretrained classifier
 
 Usage:
     $ python tame/train.py --cfg resnet50_SGD.yaml --epoch -1
@@ -7,7 +7,7 @@ Usage:
 
 import argparse
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 import yaml
@@ -16,6 +16,7 @@ from tqdm.auto import tqdm
 from utilities import AverageMeter
 
 from . import utilities as utils
+from utilities import metrics
 from . import val
 
 
@@ -45,9 +46,10 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
     # Train
     scaler = amp.GradScaler()
     epochs = cfg['epochs']
-    print(f"{'Epoch':>5}{'GPU_mem':>7}"
-          f"{'train_loss: total':>18}{'CE':>2}{'Area':>4}{'Var':>3}{'top 1':>5}{'top 5':>5}"
-          f"{'val_loss: total':>16}{'CE':>2}{'Area':>4}{'Var':>3}{'top 1':>5}{'top 5':>5}")  # 75 characters
+    print(f"{'Epoch':>6}{'GPU mem':>8}"
+          f"{'train loss: total':>18}{'CE':>3}{'Area':>5}{'Var':>4}{'top 1':>6}{'top 5':>6}"
+          f"{'val loss: total':>16}{'CE':>3}{'Area':>5}{'Var':>4}"
+          f"{'AD/IC: 100%':>12}{'50%':>6}{'15%':>6}")  # 75 characters
     # Epoch loop
     for epoch in range(last_epoch, epochs):
         top1 = AverageMeter()
@@ -70,8 +72,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
                 loss_val, loss_ce_val, loss_mean_mask_val, loss_var_mask_val = model.get_loss(
                     logits, labels, masks)
             # Backward
-            scaler.scale(loss_val).backward()
-
+            scaler.scale(loss_val).backward()  # type: ignore
             # Optimize
             scaler.unscale_(optimizer)  # unscale gradients
             torch.nn.utils.clip_grad_norm_(model.attn_mech.parameters(), max_norm=10.0)
@@ -85,21 +86,20 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
                 scheduler.step()
 
             logits1 = torch.squeeze(logits)
-            top1_val, top5_val = utils.accuracy(
+            top1_val, top5_val = metrics.accuracy(
                 logits1, labels.long(), topk=(1, 5))
-            top1.update(top1_val[0], images.size()[0])
-            top5.update(top5_val[0], images.size()[0])
+            top1.update(top1_val[0])
+            top5.update(top5_val[0])
 
-            # imgs.size()[0] is simply the batch size
-            loss.update(loss_val.item(), images.size()[0])
-            loss_mean_mask.update(loss_mean_mask_val.item(), images.size()[0])
+            loss.update(loss_val.item())
+            loss_mean_mask.update(loss_mean_mask_val.item())
             loss_var_mask.update(
-                loss_var_mask_val.item(), images.size()[0])
-            loss_ce.update(loss_ce_val.item(), images.size()[0])
+                loss_var_mask_val.item())
+            loss_ce.update(loss_ce_val.item())
             mem = '%.3gG' % (torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0)  # (GB)
-            pbar.desc = (f"{f'{epoch + 1}/{epochs}':>5}{mem:>7}"
-                         f"{loss.avg:>18}{loss_ce.avg:>2}{loss_mean_mask.avg:>4}"
-                         f"{loss_var_mask:>3}{top1:>5}{top5:>5}" + ' ' * 35)
+            pbar.desc = (f"{f'{epoch + 1}/{epochs}':>6}{mem:>8}"
+                         f"{loss:>18}{loss_ce:>3}{loss_mean_mask:>5}"
+                         f"{loss_var_mask:>4}{top1:>6}{top5:>6}" + ' ' * 52)
 
             # Val
             if i == len(pbar) - 1:
@@ -123,7 +123,7 @@ def get_arguments():
     parser.add_argument("--cfg", type=str, default='default.yaml',
                         help='config script name (not path)')
     parser.add_argument(
-        "--epoch", type=Optional[int], default=None,
+        "--epoch", type=int, default=None,
         help='Epoch to load, defaults to latest epoch saved. -1 to restart training')
     return parser.parse_args()
 

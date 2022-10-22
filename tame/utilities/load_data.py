@@ -8,7 +8,9 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 
-def data_loader(cfg: Dict[str, Any]) -> Tuple[DataLoader, ...]:
+def data_loader(
+    cfg: Dict[str, Any]
+) -> Tuple[DataLoader, DataLoader, DataLoader]:
 
     tsfm_train = transforms.Compose(
         [transforms.Resize(cfg['input_size']),

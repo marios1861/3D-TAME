@@ -1,24 +1,84 @@
-# checked, should be working correctly
+"""
+Evaluate an attention mechanism model on a pretrained classifier
 
+Usage:
+    $ python scripts/val.py --cfg resnet50_new.yaml --test --with-val
+"""
 import argparse
 import json
 import os
+from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+from torch.nn import functional as F
 from tqdm import tqdm
+from utilities import metrics
+from utilities import AverageMeter
 
 from . import utilities as utils
-from utilities import metrics
 
 
-def get_model(args):
-    mdl = utils.model_prep(args.model)
-    mdl = utils.Generic(mdl, args.layers.split(), args.version)
-    utils.restore(args, mdl, istrain=False)
-    mdl.cuda()
-    return mdl
+@torch.no_grad()
+def run(
+    cfg: Optional[Dict[str, Any]] = None,
+    args: Optional[Dict[str, Any]] = None,
+    model: Optional[utils.Generic] = None,
+    dataloader: Optional[torch.utils.data.DataLoader] = None,  # type: ignore
+    pbar: Optional[tqdm] = None
+):
+    if cfg is not None:
+        assert args is not None
+        # Dataloader
+        if args['with_val']:
+            dataloader = utils.data_loader(cfg)[1]
+        else:
+            dataloader = utils.data_loader(cfg)[2]
+        # Model
+        model = utils.get_model(cfg)
+        # Load model
+        utils.load_model(args["cfg"],
+                         cfg, model,
+                         epoch=args.get("epoch"))
+        model.half()
+        model.eval()
+    assert dataloader is not None
+    assert model is not None
+
+    n = len(dataloader)
+    action = ('validating' if (False if args is None else args['with_val'])
+              else 'testing') if args else 'validating'
+    desc = f"{pbar.desc[:-35]}{action:>35}" if pbar else f"{action}"
+    bar = tqdm(enumerate(dataloader), desc, n, False,
+               bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}', position=0)
+    
+    loss = AverageMeter()
+    loss_ce = AverageMeter()
+    loss_mean_mask = AverageMeter()  # Mask energy loss
+    loss_var_mask = AverageMeter()  # Mask variation loss
+    ad_100 = AverageMeter()
+    ad_50 = AverageMeter()
+    ad_15 = AverageMeter()
+    ic_100 = AverageMeter()
+    ic_50 = AverageMeter()
+    ic_15 = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+    with torch.cuda.autocast():  # type: ignore
+        for _, (images, labels) in bar:
+            images, labels = images.cuda(), labels.cuda()
+            logits = model(images)
+            masks = model.get_a(labels.long())
+            loss_val, loss_ce_val, loss_mean_mask_val, loss_var_mask_val = model.get_loss(
+                logits, labels, masks)
+            loss.update(loss_val.item())
+            loss_ce.update(loss_ce_val.item())
+            loss_mean_mask.update(loss_mean_mask_val.item())
+            loss_var_mask.update(loss_var_mask_val.item())
+            top1_val, top5_val = metrics.accuracy(
+                logits.squeeze(), labels.long(), topk=(1, 5))
+            top1.update(top1_val[0])
+            top5.update(top5_val[0])
 
 
 def main():
@@ -42,7 +102,7 @@ def main():
                                    for epoch in range(args.start_epoch, args.end_epoch + 1)] if os.path.isfile(f)]:
             file.write(f"{epoch}")
             args.restore_from = os.path.join(args.snapshot_dir, model_path)
-            model = get_model(args)
+            model = get_model(args, labels)
             model.eval()
             for percent in [0, 0.5, 0.85]:
 
