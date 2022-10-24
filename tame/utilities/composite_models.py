@@ -1,26 +1,24 @@
 # checked, should be working correctly
-from typing import ClassVar, Dict, List, Type
+from typing import ClassVar, Dict, List, Optional, Tuple, Type
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
-from torchvision.models.feature_extraction import (
-    create_feature_extractor,
-    get_graph_node_names,
-)
+from torchvision.models.feature_extraction import (create_feature_extractor,
+                                                   get_graph_node_names)
 
 
 class AttentionMech(nn.Module):
-    def __init__(self, ft_size: list[torch.Size]):
+    def __init__(self, ft_size: List[torch.Size]):
         super(AttentionMech, self).__init__()
 
-    def forward(self, features: list[torch.Tensor]) -> tuple[torch.Tensor]:
+    def forward(self, features: List[torch.Tensor]) -> Tuple[torch.Tensor]:
         raise NotImplementedError
 
 
 class AttentionTAME(AttentionMech):
-    def __init__(self, ft_size: list[torch.Size]):
+    def __init__(self, ft_size: List[torch.Size]):
         super(AttentionTAME, self).__init__(ft_size)
         feat_height = ft_size[0][2] if ft_size[0][2] <= 56 else 56
         self.interpolate = lambda inp: F.interpolate(
@@ -86,7 +84,7 @@ class AttentionTAME(AttentionMech):
 class AttentionV3d2dd1(AttentionMech):
     r"""Like 3.2, but with batch norm before relu"""
 
-    def __init__(self, ft_size: list[torch.Size]):
+    def __init__(self, ft_size: List[torch.Size]):
         super(AttentionV3d2dd1, self).__init__(ft_size)
         feat_height = ft_size[0][2] if ft_size[0][2] <= 56 else 56
         self.interpolate = lambda inp: F.interpolate(
@@ -137,7 +135,7 @@ class AttentionV3d2dd1(AttentionMech):
 class AttentionV3d2(AttentionMech):
     r"""the same as V3.1 but the first conv layers retain the dimensionality"""
 
-    def __init__(self, ft_size: list[torch.Size]):
+    def __init__(self, ft_size: List[torch.Size]):
         super(AttentionV3d2, self).__init__(ft_size)
         feat_height = ft_size[0][2] if ft_size[0][2] <= 56 else 56
         self.interpolate = lambda inp: F.interpolate(
@@ -187,7 +185,7 @@ class AttentionV5d1(AttentionMech):
     r"""The same as V5 but the first activation function is a sigmoid
     ABLATION STUDY"""
 
-    def __init__(self, ft_size: list[torch.Size]):
+    def __init__(self, ft_size: List[torch.Size]):
         super(AttentionV5d1, self).__init__(ft_size)
         feat_height = ft_size[0][2] if ft_size[0][2] <= 56 else 56
         self.interpolate = lambda inp: F.interpolate(
@@ -264,7 +262,7 @@ class AttentionMechFactory(object):
         cls.versions.update({name: new_attention})
 
     @classmethod
-    def create_attention(cls, version: str, ft_size: list[torch.Size]) -> AttentionMech:
+    def create_attention(cls, version: str, ft_size: List[torch.Size]) -> AttentionMech:
         try:
             return cls.versions[version](ft_size)
         except KeyError:
@@ -312,10 +310,10 @@ class Generic(nn.Module):
         arrangement = Arrangement("1-1", self.body, self.output)
         self.train_policy, self.get_loss = (arrangement.train_policy, arrangement.loss)
 
-        self.a: torch.Tensor | None = None
-        self.c: torch.Tensor | None = None
+        self.a: Optional[torch.Tensor] = None
+        self.c: Optional[torch.Tensor] = None
 
-    def forward(self, x: torch.Tensor, label: torch.LongTensor | None = None):
+    def forward(self, x: torch.Tensor, label: Optional[torch.LongTensor] = None):
         x_norm = Generic.normalization(x)
 
         features = self.body(x_norm)
@@ -336,13 +334,13 @@ class Generic(nn.Module):
         else:
             return x_norm
 
-    def get_c(self, label: torch.Tensor) -> torch.Tensor:
+    def get_c(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.c is not None
-        return self.c[:, label, :, :]
+        return self.c[:, labels, :, :]
 
-    def get_a(self, label: torch.Tensor) -> torch.Tensor:
+    def get_a(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.a is not None
-        return self.a[:, label, :, :]
+        return self.a[:, labels, :, :]
 
 
 class Arrangement(nn.Module):
@@ -394,7 +392,7 @@ class Arrangement(nn.Module):
 
     def loss1(
         self, logits: torch.Tensor, labels: torch.Tensor, masks: torch.Tensor
-    ) -> list[torch.Tensor]:
+    ) -> List[torch.Tensor]:
         labels = labels.long()
         variation_loss = self.smoothness_loss_coeff * Arrangement.smoothness_loss(masks)
         area_loss = self.area_loss_coeff * self.area_loss(masks)

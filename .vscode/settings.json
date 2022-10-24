@@ -6,12 +6,5 @@
 	"python.analysis.typeCheckingMode": "basic",
 	"python.analysis.diagnosticSeverityOverrides": {
 		"reportPrivateImportUsage":"none" 
-	},
-	"python.analysis.packageIndexDepths": [
-        {
-            "name": "torch",
-            "depth": 4,
-			"includeAllSymbols": true
-        }
-    ]
+	}
 }

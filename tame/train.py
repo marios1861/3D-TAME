@@ -13,11 +13,10 @@ import torch
 import yaml
 from torch.cuda import amp
 from tqdm.auto import tqdm
-from utilities import AverageMeter
 
 from . import utilities as utils
-from utilities import metrics
 from . import val
+from .utilities import AverageMeter, metrics
 
 
 def train(cfg: Dict[str, Any], args: Dict[str, Any]):
@@ -33,10 +32,9 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
     # Attempt to reload
     if args["epoch"] != -1:
         # load the latest epoch, or the epoch supplied by args
-        last_epoch = utils.load_model(args["cfg"],
-                                      cfg, model,
-                                      optimizer,
-                                      args.get("epoch"))
+        last_epoch = utils.load_model(
+            args["cfg"], cfg, model, optimizer, args.get("epoch")
+        )
     else:
         last_epoch = 0
 
@@ -45,11 +43,13 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
 
     # Train
     scaler = amp.GradScaler()
-    epochs = cfg['epochs']
-    print(f"{'Epoch':>6}{'GPU mem':>8}"
-          f"{'train loss: total':>18}{'CE':>3}{'Area':>5}{'Var':>4}{'top 1':>6}{'top 5':>6}"
-          f"{'val loss: total':>16}{'CE':>3}{'Area':>5}{'Var':>4}"
-          f"{'AD/IC: 100%':>12}{'50%':>6}{'15%':>6}")  # 75 characters
+    epochs = cfg["epochs"]
+    print(
+        f"{'Epoch':>6}{'GPU mem':>8}"
+        f"{'train loss: total':>18}{'CE':>3}{'Area':>5}{'Var':>4}{'top 1':>6}{'top 5':>6}"
+        f"{'val loss: total':>16}{'CE':>3}{'Area':>5}{'Var':>4}"
+        f"{'AD/IC: 100%':>12}{'50%':>6}{'15%':>6}"
+    )  # 75 characters
     # Epoch loop
     for epoch in range(last_epoch, epochs):
         top1 = AverageMeter()
@@ -59,8 +59,11 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
         loss_mean_mask = AverageMeter()  # Mask energy loss
         loss_var_mask = AverageMeter()  # Mask variation loss
         model.train()
-        pbar = tqdm(enumerate(train_loader), total=len(train_loader),
-                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
+        pbar = tqdm(
+            enumerate(train_loader),
+            total=len(train_loader),
+            bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}",
+        )
         # Batch loop
         for i, (images, labels) in pbar:
             images, labels = images.cuda(), labels.cuda()
@@ -69,8 +72,12 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
             with amp.autocast():
                 logits = model(images, labels)
                 masks = model.get_a(labels.long())
-                loss_val, loss_ce_val, loss_mean_mask_val, loss_var_mask_val = model.get_loss(
-                    logits, labels, masks)
+                (
+                    loss_val,
+                    loss_ce_val,
+                    loss_mean_mask_val,
+                    loss_var_mask_val,
+                ) = model.get_loss(logits, labels, masks)
             # Backward
             scaler.scale(loss_val).backward()  # type: ignore
             # Optimize
@@ -86,57 +93,57 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
                 scheduler.step()
 
             logits1 = torch.squeeze(logits)
-            top1_val, top5_val = metrics.accuracy(
-                logits1, labels.long(), topk=(1, 5))
+            top1_val, top5_val = metrics.accuracy(logits1, labels.long(), topk=(1, 5))
             top1.update(top1_val[0])
             top5.update(top5_val[0])
 
             loss.update(loss_val.item())
             loss_mean_mask.update(loss_mean_mask_val.item())
-            loss_var_mask.update(
-                loss_var_mask_val.item())
+            loss_var_mask.update(loss_var_mask_val.item())
             loss_ce.update(loss_ce_val.item())
-            mem = '%.3gG' % (torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0)  # (GB)
-            pbar.desc = (f"{f'{epoch + 1}/{epochs}':>6}{mem:>8}"
-                         f"{loss:>18}{loss_ce:>3}{loss_mean_mask:>5}"
-                         f"{loss_var_mask:>4}{top1:>6}{top5:>6}" + ' ' * 52)
+            mem = "%.3gG" % (
+                torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0
+            )  # (GB)
+            pbar.desc = (
+                f"{f'{epoch + 1}/{epochs}':>6}{mem:>8}"
+                f"{loss:>18.3g}{loss_ce:>3.3g}{loss_mean_mask:>5.3g}"
+                f"{loss_var_mask:>4.3g}{top1:>6.3g}{top5:>6.3g}" + " " * 52
+            )
 
             # Val
             if i == len(pbar) - 1:
                 model.half()
-                stats = val.run(model=model.eval(),
-                                dataloader=val_loader,
-                                pbar=pbar)
+                _ = val.run(model=model.eval(), dataloader=val_loader, pbar=pbar)
                 model.float()
 
         # first epoch: 1, during training it is current_epoch == 0, saved as epoch_1 ...
         # last epoch: 8, during training it is current_epoch ==7, saved as epoch_8
-        utils.save_model(cfg["cfg"],
-                         cfg,
-                         model,
-                         optimizer,
-                         epoch)
+        utils.save_model(cfg["cfg"], cfg, model, optimizer, epoch)
 
 
 def get_arguments():
-    parser = argparse.ArgumentParser(description='Train script')
-    parser.add_argument("--cfg", type=str, default='default.yaml',
-                        help='config script name (not path)')
+    parser = argparse.ArgumentParser(description="Train script")
     parser.add_argument(
-        "--epoch", type=int, default=None,
-        help='Epoch to load, defaults to latest epoch saved. -1 to restart training')
+        "--cfg", type=str, default="default.yaml", help="config script name (not path)"
+    )
+    parser.add_argument(
+        "--epoch",
+        type=int,
+        default=None,
+        help="Epoch to load, defaults to latest epoch saved. -1 to restart training",
+    )
     return parser.parse_args()
 
 
 def main(args):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
-    print('Running parameters:\n')
+    print("Running parameters:\n")
     print(yaml.dump(vars(args), indent=4))
     cfg = utils.load_config(ROOT_DIR / "configs", args.cfg)
     train(cfg, vars(args))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cmd_args = get_arguments()
     main(cmd_args)

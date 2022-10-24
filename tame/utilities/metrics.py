@@ -1,10 +1,11 @@
-import math
+from typing import List
 
 import cv2
 import numpy as np
 import torch
 import torchvision.transforms as transforms
 from sklearn import metrics
+from torch.nn import functional as F
 
 
 def show_cam_on_image(
@@ -62,32 +63,31 @@ def normalizeMinMax(cam_map):
     return cam_map
 
 
-def drop_Npercent(cam_map, percent):
-    # Select N percent of pixels
-    if percent == 0:
-        return cam_map
+def get_masked_inputs(
+    inp: torch.Tensor,
+    masks: torch.Tensor,
+    labels: torch.LongTensor,
+    img_size: int,
+    percent: List[float],
+):
+    B, _, H, W = masks.size()
+    indexes = labels.expand(H, W, 1, B).permute(*range(masks.ndim - 1, -1, -1))
+    masks = torch.gather(masks, 1, indexes)  # select masks
+    masks = F.interpolate(
+        masks, size=(img_size, img_size), mode="bilinear", align_corners=False
+    )
+    B, _, H, W = masks.size()
 
-    N, C, H, W = cam_map.size()
-    cam_map_tmp = cam_map
-    f = torch.flatten(cam_map)
-    value = int(H * W * percent)
-    # print(value)
-    m = torch.kthvalue(f, value)
-    cam_map_tmp[cam_map_tmp < m.values] = 0
-    num_pixels = math.ceil((1 - percent) * (H * W))
-    k = torch.count_nonzero(cam_map_tmp > 0) - num_pixels
-    k = math.floor(k)
-    if k >= 1:
-        indices = torch.nonzero(cam_map == m.values)
-        for pi in range(0, int(k)):
-            cam_map_tmp[
-                indices[pi][0], indices[pi][1], indices[pi][2], indices[pi][3]
-            ] = 0
-    cam_map = cam_map_tmp
-    #   cam_map[cam_map!=0] = 1
-    # k = torch.count_nonzero(cam_map_tmp>0) - num_pixels
-    #    print(k)
-    return cam_map
+    def percent_gen(pc):
+        masks.flatten(start_dim=1, end_dim=3).quantile(pc, dim=1).expand(
+            H, W, 1, B
+        ).permute(*range(masks.ndim - 1, -1, -1))
+
+    masks_ls: List[torch.Tensor] = [
+        masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent
+    ]
+    x_masked_ls = [mask * inp for mask in masks_ls]
+    return x_masked_ls
 
 
 def normalize(tensor):
@@ -132,17 +132,15 @@ def _to_numpy(v):
     return v
 
 
-def AD(Yc_realImage, Yc_E):
-    L = sum(np.divide((Yc_realImage - Yc_E).clip(min=0), Yc_realImage)) * (
-        100 / len(Yc_realImage)
+def get_AD(original_logits: torch.Tensor, new_logits: torch.Tensor) -> float:
+    AD = ((original_logits - new_logits).clip(min=0) / original_logits).sum() * (
+        100 / original_logits.size()[0]
     )
-    # print('AD', L)
-    return L
+    return AD.item()
 
 
-def IC(Yc_realImage, Yc_E):
-    dif = Yc_E - Yc_realImage
-    sum_ = sum(i > 0 for i in dif)
-    count = sum_ * (100.0 / len(Yc_realImage))
-    #  print('IC',count)
-    return count
+def get_IC(original_logits: torch.Tensor, new_logits: torch.Tensor) -> float:
+    IC = (new_logits - original_logits).clip(min=0).sum() * (
+        100 / original_logits.size()[0]
+    )
+    return IC.item()
