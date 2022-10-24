@@ -21,7 +21,7 @@ from .utilities import AverageMeter, metrics
 def run(
     cfg: Optional[Dict[str, Any]] = None,
     args: Optional[Dict[str, Any]] = None,
-    percent_list: List[float] = [0, 0.5, 0.85],
+    percent_list: List[float] = [0.0, 0.5, 0.85],
     model: Optional[utils.Generic] = None,
     dataloader: Optional[torch.utils.data.DataLoader] = None,  # type: ignore
     pbar: Optional[tqdm] = None,
@@ -45,7 +45,7 @@ def run(
     # dig through dataloader to find input image size
     transform: transforms.Compose = dataloader.dataset.transform  # type: ignore
     img_size = next(
-        tsfm for tsfm in transform.transforms if isinstance(tsfm, transforms.RandomCrop)
+        tsfm for tsfm in transform.transforms if isinstance(tsfm, transforms.CenterCrop)
     ).size[0]
 
     n = len(dataloader)
@@ -67,37 +67,43 @@ def run(
     losses = [AverageMeter() for _ in range(0, 4)]
     ADs = [AverageMeter() for _ in percent_list]
     ICs = [AverageMeter() for _ in percent_list]
-    with torch.cuda.autocast():  # type: ignore
-        for _, (images, labels) in bar:
-            images, labels = images.cuda(), labels.cuda()
-            logits = model(images)
+    for _, (images, labels) in bar:
+        with torch.cuda.amp.autocast():
+            images, labels = images.cuda(), labels.cuda()  # type: ignore
+            images: torch.Tensor
+            labels: torch.LongTensor
+            logits: torch.Tensor = model(images)
             masks = model.get_c(labels)
 
             losses_vals = model.get_loss(logits, labels, masks)
             for loss, loss_val in zip(losses, losses_vals):
                 loss.update(loss_val.item())
-
-            chosen_logits: torch.Tensor = logits[:, labels, :, :]
+            chosen_logits = logits.gather(1, labels.unsqueeze(-1)).squeeze()
             masks = metrics.normalizeMinMax(masks)
             masked_images_list = metrics.get_masked_inputs(
                 images, masks, labels, img_size, percent_list
             )
-            updated_logits_list = [
-                model(masked_images) for masked_images in masked_images_list
+            new_logits_list = [model(masked_images) for masked_images in masked_images_list]
+            new_logits_list = [
+                new_logits.gather(1, labels.unsqueeze(-1)).squeeze()
+                for new_logits in new_logits_list
             ]
-            for AD, IC, updated_logits in zip(ADs, ICs, updated_logits_list):
-                AD.update(metrics.get_AD(chosen_logits, updated_logits))
-                IC.update(metrics.get_IC(chosen_logits, updated_logits))
+            for AD, IC, new_logits in zip(ADs, ICs, new_logits_list):
+                AD.update(metrics.get_AD(chosen_logits, new_logits))
+                IC.update(metrics.get_IC(chosen_logits, new_logits))
 
     if pbar:
         losses_str = "".join(
-            f"{loss.avg:>{align}.2g}" for loss, align in zip(losses, [16, 3, 4, 5])
+            f"{loss.avg:>{align}.2f}" for loss, align in zip(losses, [16, 6, 6, 6])
         )
         AD_IC_str = "".join(
-            f"{AD.avg:>{align}.2g}/{IC.avg:>{align}.2g}"
-            for AD, IC, align in zip(ADs, ICs, [12, 6, 6])
+            f"{num_pair:>{align}}"
+            for num_pair, align in zip(
+                (f"{AD.avg:.2f}/{IC.avg:.2f}" for AD, IC in zip(ADs, ICs)),
+                [12, 12, 12]
+            )
         )
-        pbar.desc = f"{pbar.desc[:-52]}{losses_str}{AD_IC_str}"
+        pbar.desc = f"{pbar.desc[:-58]}{losses_str}{AD_IC_str}"
     return [
         [loss.avg for loss in losses],
         [AD.avg for AD in ADs],

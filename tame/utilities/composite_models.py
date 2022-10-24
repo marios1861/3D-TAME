@@ -5,8 +5,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
-from torchvision.models.feature_extraction import (create_feature_extractor,
-                                                   get_graph_node_names)
+from torchvision.models.feature_extraction import (
+    create_feature_extractor,
+    get_graph_node_names,
+)
 
 
 class AttentionMech(nn.Module):
@@ -272,7 +274,13 @@ class AttentionMechFactory(object):
 class Generic(nn.Module):
     normalization = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
-    def __init__(self, mdl: nn.Module, feature_layers: List[str], attn_version: str):
+    def __init__(
+        self,
+        mdl: nn.Module,
+        feature_layers: List[str],
+        attn_version: str,
+        noisy_masks: bool = True,
+    ):
         """Args:
         mdl (nn.Module): the model which we would like to use for interpretability
         feature_layers (list): the layers, as printed by get_graph_node_names,
@@ -312,18 +320,20 @@ class Generic(nn.Module):
 
         self.a: Optional[torch.Tensor] = None
         self.c: Optional[torch.Tensor] = None
+        self.noisy_masks = noisy_masks
 
-    def forward(self, x: torch.Tensor, label: Optional[torch.LongTensor] = None):
+    def forward(
+        self, x: torch.Tensor, label: Optional[torch.LongTensor] = None
+    ) -> torch.Tensor:
         x_norm = Generic.normalization(x)
 
-        features = self.body(x_norm)
+        features: Dict[str, torch.Tensor] = self.body(x_norm)
         x_norm = features.pop(self.output)
 
         # features now only has the feature maps since we popped the output in case we are in eval mode
 
         # Attention mechanism
-
-        a, c = self.attn_mech(features)
+        a, c = self.attn_mech(features.values())
         self.a = a
         self.c = c
         # if in training mode we need to do another forward pass with our masked input as input
@@ -336,11 +346,28 @@ class Generic(nn.Module):
 
     def get_c(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.c is not None
-        return self.c[:, labels, :, :]
+        if self.noisy_masks:
+            return self.c[:, labels, :, :]
+        else:
+            masks = self.c
+            B, _, H, W = masks.size()
+            ndims = masks.ndim
+            indexes = labels.expand(H, W, 1, B).permute(*range(ndims - 1, -1, -1))
+            masks = torch.gather(masks, 1, indexes)
+            return masks
 
     def get_a(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.a is not None
-        return self.a[:, labels, :, :]
+        if self.noisy_masks:
+            return self.a[:, labels, :, :]
+        else:
+            masks = self.a
+            B, _, H, W = masks.size()
+            ndims = masks.ndim
+            indexes = labels.expand(H, W, 1, B).permute(*range(ndims - 1, -1, -1))
+            masks = torch.gather(masks, 1, indexes)
+            print(f"c shape = {masks.shape}")
+            return masks
 
 
 class Arrangement(nn.Module):

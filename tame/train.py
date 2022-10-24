@@ -46,9 +46,9 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
     epochs = cfg["epochs"]
     print(
         f"{'Epoch':>6}{'GPU mem':>8}"
-        f"{'train loss: total':>18}{'CE':>3}{'Area':>5}{'Var':>4}{'top 1':>6}{'top 5':>6}"
-        f"{'val loss: total':>16}{'CE':>3}{'Area':>5}{'Var':>4}"
-        f"{'AD/IC: 100%':>12}{'50%':>6}{'15%':>6}"
+        f"{'train loss: total':>18}{'CE':>6}{'Area':>6}{'Var':>6}{'top 1':>6}{'top 5':>6}"
+        f"{'val loss: total':>16}{'CE':>6}{'Area':>6}{'Var':>6}"
+        f"{'AD/IC: 100%':>12}{'50%':>12}{'15%':>12}"
     )  # 75 characters
     # Epoch loop
     for epoch in range(last_epoch, epochs):
@@ -106,15 +106,22 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
             )  # (GB)
             pbar.desc = (
                 f"{f'{epoch + 1}/{epochs}':>6}{mem:>8}"
-                f"{loss:>18.3g}{loss_ce:>3.3g}{loss_mean_mask:>5.3g}"
-                f"{loss_var_mask:>4.3g}{top1:>6.3g}{top5:>6.3g}" + " " * 52
+                f"{loss.avg:>18.2f}{loss_ce.avg:>6.2f}{loss_mean_mask.avg:>6.2f}"
+                f"{loss_var_mask.avg:>6.2f}{top1.avg:>6.2f}{top5.avg:>6.2f}" + " " * 58
             )
+            remaining = (
+                (pbar.total - pbar.n) / pbar.format_dict["rate"]
+                if pbar.format_dict["rate"] and pbar.total
+                else 0
+            )
+            total = remaining + (pbar.format_dict["elapsed"] + remaining) * (
+                epochs - epoch - 1
+            )
+            pbar.set_postfix({"ETA": pbar.format_interval(total)})
 
             # Val
             if i == len(pbar) - 1:
-                model.half()
                 _ = val.run(model=model.eval(), dataloader=val_loader, pbar=pbar)
-                model.float()
 
         # first epoch: 1, during training it is current_epoch == 0, saved as epoch_1 ...
         # last epoch: 8, during training it is current_epoch ==7, saved as epoch_8

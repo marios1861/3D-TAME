@@ -23,7 +23,7 @@ def load_model(
         checkpoint = torch.load(checkpoint_dir)
         if optimizer is not None:
             optimizer.load_state_dict(checkpoint['optimizer'])
-        model.attn_mech.load_state_dict(checkpoint_dir['attn_mech'])
+        model.attn_mech.load_state_dict(checkpoint['attn_mech'])
         return checkpoint['epoch']
     else:
         return 0
@@ -45,6 +45,7 @@ def save_model(
 def get_checkpoint_dir(cfg_name: str,
                        cfg: Dict[str, Any],
                        epoch: Optional[int] = None) -> Path:
+    id: str = '0'
     cfg_name = Path(cfg_name).stem  # remove file extension:
     # we have already read the snapshot_ids.csv file
     if 'checkpoint_dir' in cfg.keys():
@@ -55,22 +56,22 @@ def get_checkpoint_dir(cfg_name: str,
         if id_file.is_file():
             df = pd.read_csv(id_file)
             # the id for this cfg file already exists
-            if cfg_name in df['name']:
-                id = df[df['name'] == cfg_name]['id']
+            if df['name'].isin([cfg_name]).any():
+                id = df[df['name'] == cfg_name]['id'].to_string(index=False)  # type: ignore
             # the id for this cfg file does not exist
             # generate it and update the snapshot_ids.csv file
             else:
                 id = uuid.uuid4().hex
-                new_id = {"id": id, "name": cfg_name}
-                df.append(new_id, ignore_index=True)
-                df.to_csv(id_file, mode='a', header=False)
+                new_id = {"id": [id], "name": [cfg_name]}
+                df = pd.DataFrame.from_dict(new_id)
+                df.to_csv(id_file, mode='a', header=False, index=False)
         # the id for this cfg does not exist
         # the snapshot_ids.csv file does not exist
         # generate id and create file
         else:
             id = uuid.uuid4().hex
-            new_id = {"id": id, "name": cfg_name}
-            df.to_csv(id_file, mode='w', header=True)
+            new_id = {"id": [id], "name": [cfg_name]}
+            pd.DataFrame.from_dict(new_id).to_csv(id_file, mode='w', header=True, index=False)
     checkpoint_dir: Path = Path(cfg['snapshot_dir']) / id
     cfg["checkpoint_dir"] = checkpoint_dir
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -78,5 +79,6 @@ def get_checkpoint_dir(cfg_name: str,
         checkpoint_dir = checkpoint_dir / f'epoch_{epoch}.pt'
     else:
         epochs = [int(x.stem.replace("epoch", "")) for x in checkpoint_dir.iterdir()]
+        epochs.append(0)
         checkpoint_dir = checkpoint_dir / f'epoch_{max(epochs)}.pt'
     return checkpoint_dir

@@ -56,10 +56,10 @@ def normalizeMinMax4Dtensor(Att_map):
     return Att_map
 
 
-def normalizeMinMax(cam_map):
-    cam_map_min, cam_map_max = torch.max(cam_map) - torch.min(cam_map)
+def normalizeMinMax(cam_map: torch.Tensor) -> torch.Tensor:
+    cam_map_min = torch.min(cam_map)
     cam_map -= cam_map_min
-    cam_map /= cam_map_max - cam_map_min
+    cam_map /= torch.max(cam_map) - cam_map_min
     return cam_map
 
 
@@ -69,23 +69,29 @@ def get_masked_inputs(
     labels: torch.LongTensor,
     img_size: int,
     percent: List[float],
-):
-    B, _, H, W = masks.size()
-    indexes = labels.expand(H, W, 1, B).permute(*range(masks.ndim - 1, -1, -1))
-    masks = torch.gather(masks, 1, indexes)  # select masks
+    noisy_masks: bool = True
+) -> List[torch.Tensor]:
+    B, C, _, _ = masks.size()
+    if noisy_masks:
+        assert C == B
+        masks = masks.diagonal().permute(2, 0, 1).unsqueeze(1)
+    _, C, _, _ = masks.size()
+    assert C == 1
+
     masks = F.interpolate(
         masks, size=(img_size, img_size), mode="bilinear", align_corners=False
     )
-    B, _, H, W = masks.size()
+    _, _, H, W = masks.size()
+    masks = masks.float()
 
-    def percent_gen(pc):
-        masks.flatten(start_dim=1, end_dim=3).quantile(pc, dim=1).expand(
-            H, W, 1, B
-        ).permute(*range(masks.ndim - 1, -1, -1))
-
-    masks_ls: List[torch.Tensor] = [
-        masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent
-    ]
+    def percent_gen(pc: float) -> torch.Tensor:
+        return (
+            masks.flatten(start_dim=1, end_dim=3)
+            .quantile(pc, dim=1)
+            .expand(H, W, C, B)
+            .permute(*range(masks.ndim - 1, -1, -1))
+        )
+    masks_ls = [masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent]
     x_masked_ls = [mask * inp for mask in masks_ls]
     return x_masked_ls
 
