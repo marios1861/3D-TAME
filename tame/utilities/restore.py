@@ -45,12 +45,12 @@ def save_model(
 def get_checkpoint_dir(cfg_name: str,
                        cfg: Dict[str, Any],
                        epoch: Optional[int] = None) -> Path:
-    id: str = '0'
     cfg_name = Path(cfg_name).stem  # remove file extension:
     # we have already read the snapshot_ids.csv file
     if 'checkpoint_dir' in cfg.keys():
         checkpoint_dir = cfg["checkpoint_dir"]
     else:
+        id: str = '0'
         id_file = Path(cfg['snapshot_dir']) / "snapshot_ids.csv"
         # we are reading the snapshot_ids.csv file for the first time
         if id_file.is_file():
@@ -72,12 +72,13 @@ def get_checkpoint_dir(cfg_name: str,
             id = uuid.uuid4().hex
             new_id = {"id": [id], "name": [cfg_name]}
             pd.DataFrame.from_dict(new_id).to_csv(id_file, mode='w', header=True, index=False)
-    checkpoint_dir: Path = Path(cfg['snapshot_dir']) / id
-    cfg["checkpoint_dir"] = checkpoint_dir
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    if epoch:
+        checkpoint_dir: Path = Path(cfg['snapshot_dir']) / id
+        cfg["checkpoint_dir"] = checkpoint_dir
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    if epoch is not None:
         checkpoint_dir = checkpoint_dir / f'epoch_{epoch}.pt'
     else:
+        print(checkpoint_dir)
         epochs = [int(x.stem.replace("epoch", "")) for x in checkpoint_dir.iterdir()]
         epochs.append(0)
         checkpoint_dir = checkpoint_dir / f'epoch_{max(epochs)}.pt'

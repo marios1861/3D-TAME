@@ -33,7 +33,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
     if args["epoch"] != -1:
         # load the latest epoch, or the epoch supplied by args
         last_epoch = utils.load_model(
-            args["cfg"], cfg, model, optimizer, args.get("epoch")
+            args["cfg"], cfg, model, optimizer, args["epoch"]
         )
     else:
         last_epoch = 0
@@ -66,12 +66,14 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
         )
         # Batch loop
         for i, (images, labels) in pbar:
-            images, labels = images.cuda(), labels.cuda()
+            images, labels = images.cuda(), labels.cuda()    # type: ignore
+            images: torch.Tensor
+            labels: torch.LongTensor
 
             # forward pass
             with amp.autocast():
                 logits = model(images, labels)
-                masks = model.get_a(labels.long())
+                masks = model.get_a(labels)
                 (
                     loss_val,
                     loss_ce_val,
@@ -106,8 +108,8 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
             )  # (GB)
             pbar.desc = (
                 f"{f'{epoch + 1}/{epochs}':>6}{mem:>8}"
-                f"{loss.avg:>18.2f}{loss_ce.avg:>6.2f}{loss_mean_mask.avg:>6.2f}"
-                f"{loss_var_mask.avg:>6.2f}{top1.avg:>6.2f}{top5.avg:>6.2f}" + " " * 58
+                f"{loss():>18.2f}{loss_ce():>6.2f}{loss_mean_mask():>6.2f}"
+                f"{loss_var_mask():>6.2f}{top1():>6.2f}{top5():>6.2f}" + " " * 58
             )
             remaining = (
                 (pbar.total - pbar.n) / pbar.format_dict["rate"]
@@ -121,11 +123,13 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
 
             # Val
             if i == len(pbar) - 1:
+                model.noisy_masks = False
                 _ = val.run(model=model.eval(), dataloader=val_loader, pbar=pbar)
+                model.noisy_masks = True
 
         # first epoch: 1, during training it is current_epoch == 0, saved as epoch_1 ...
         # last epoch: 8, during training it is current_epoch ==7, saved as epoch_8
-        utils.save_model(cfg["cfg"], cfg, model, optimizer, epoch)
+        utils.save_model(args["cfg"], cfg, model, optimizer, epoch)
 
 
 def get_arguments():

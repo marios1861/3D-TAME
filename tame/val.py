@@ -81,7 +81,7 @@ def run(
             chosen_logits = logits.gather(1, labels.unsqueeze(-1)).squeeze()
             masks = metrics.normalizeMinMax(masks)
             masked_images_list = metrics.get_masked_inputs(
-                images, masks, labels, img_size, percent_list
+                images, masks, labels, img_size, percent_list, model.noisy_masks
             )
             new_logits_list = [model(masked_images) for masked_images in masked_images_list]
             new_logits_list = [
@@ -94,12 +94,12 @@ def run(
 
     if pbar:
         losses_str = "".join(
-            f"{loss.avg:>{align}.2f}" for loss, align in zip(losses, [16, 6, 6, 6])
+            f"{loss():>{align}.2f}" for loss, align in zip(losses, [16, 6, 6, 6])
         )
         AD_IC_str = "".join(
             f"{num_pair:>{align}}"
             for num_pair, align in zip(
-                (f"{AD.avg:.2f}/{IC.avg:.2f}" for AD, IC in zip(ADs, ICs)),
+                (f"{AD():.2f}/{IC():.2f}" for AD, IC in zip(ADs, ICs)),
                 [12, 12, 12]
             )
         )

@@ -397,7 +397,7 @@ class Arrangement(nn.Module):
 
     @staticmethod
     def smoothness_loss(masks, power=2, border_penalty=0.3):
-        B, C, H, W = masks.size()
+        B, _, _, _ = masks.size()
         x_loss = torch.sum(
             (torch.abs(masks[:, :, 1:, :] - masks[:, :, :-1, :])) ** power
         )
