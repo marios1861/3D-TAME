@@ -4,7 +4,7 @@ from queue import Queue
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
-    def __init__(self, use_ema: bool = True, a: float = 0.001, k: int = 10):
+    def __init__(self, use_ema: bool = True, a: float = 0.001, k: int = 100):
         self.use_ema = use_ema
         if not use_ema:
             self.values: Queue[float] = Queue(maxsize=k)

@@ -33,15 +33,15 @@ def get_optim(cfg: Dict[str, Any], model: Generic) -> optim.Optimizer:
                 g[0].append(p)
     if cfg["optimizer"] == "Adam":
         # adjust beta1 to momentum
-        optimizer = optim.Adam(g[2], lr=0.1, betas=(cfg["momentum"], 0.999))
+        optimizer = optim.Adam(g[2], lr=1e-7, betas=(cfg["momentum"], 0.999))
     elif cfg["optimizer"] == "AdamW":
         optimizer = optim.AdamW(
-            g[2], lr=0.1, betas=(cfg["momentum"], 0.999), weight_decay=0.0
+            g[2], lr=1e-7, betas=(cfg["momentum"], 0.999), weight_decay=0.0
         )
     elif cfg["optimizer"] == "RMSProp":
-        optimizer = optim.RMSprop(g[2], lr=0.1, momentum=cfg["momentum"])
+        optimizer = optim.RMSprop(g[2], lr=1e-7, momentum=cfg["momentum"])
     elif cfg["optimizer"] == "SGD":
-        optimizer = optim.SGD(g[2], lr=0.1, momentum=cfg["momentum"], nesterov=True)
+        optimizer = optim.SGD(g[2], lr=1e-7, momentum=cfg["momentum"], nesterov=True)
     else:
         raise NotImplementedError(f'Optimizer {cfg["optimizer"]} not implemented.')
 

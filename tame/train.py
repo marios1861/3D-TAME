@@ -58,6 +58,11 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
         loss_ce = AverageMeter()
         loss_mean_mask = AverageMeter()  # Mask energy loss
         loss_var_mask = AverageMeter()  # Mask variation loss
+
+        # freeze classifier
+        model.requires_grad_(requires_grad=False)
+        model.attn_mech.requires_grad_()
+
         model.train()
         pbar = tqdm(
             enumerate(train_loader),
@@ -71,28 +76,39 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
             labels: torch.LongTensor
 
             # forward pass
-            with amp.autocast():
-                logits = model(images, labels)
-                masks = model.get_a(labels)
-                (
-                    loss_val,
-                    loss_ce_val,
-                    loss_mean_mask_val,
-                    loss_var_mask_val,
-                ) = model.get_loss(logits, labels, masks)
-            # Backward
-            scaler.scale(loss_val).backward()  # type: ignore
-            # Optimize
-            scaler.unscale_(optimizer)  # unscale gradients
-            torch.nn.utils.clip_grad_norm_(model.attn_mech.parameters(), max_norm=10.0)
-            scaler.step(optimizer)
-            scaler.update()
+            # with amp.autocast():
+            logits = model(images, labels)
+            masks = model.get_a(labels)
+            (
+                loss_val,
+                loss_ce_val,
+                loss_mean_mask_val,
+                loss_var_mask_val,
+            ) = model.get_loss(logits, labels, masks)
+            # gradients that aren't computed are set to None
             optimizer.zero_grad(set_to_none=True)
+
+            # backwards pass
+            loss_val.backward()
+
+            # optimizer step
+            optimizer.step()
+
+            # lr reduction step
+            scheduler.step()
+            # # Backward
+            # scaler.scale(loss_val).backward()  # type: ignore
+            # # Optimize
+            # # scaler.unscale_(optimizer)  # unscale gradients
+            # # torch.nn.utils.clip_grad_norm_(model.attn_mech.parameters(), max_norm=10.0)
+            # scaler.step(optimizer)
+            # scaler.update()
+            # optimizer.zero_grad(set_to_none=True)
 
             # Skip 10 first batches to make sure that loss gradient
             # has stabilized enough for step to run step
-            if i > 10:
-                scheduler.step()
+            # if i > 10:
+            #     scheduler.step()
 
             logits1 = torch.squeeze(logits)
             top1_val, top5_val = metrics.accuracy(logits1, labels.long(), topk=(1, 5))
@@ -109,7 +125,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
             pbar.desc = (
                 f"{f'{epoch + 1}/{epochs}':>6}{mem:>8}"
                 f"{loss():>18.2f}{loss_ce():>6.2f}{loss_mean_mask():>6.2f}"
-                f"{loss_var_mask():>6.2f}{top1():>6.2f}{top5():>6.2f}" + " " * 58
+                f"{loss_var_mask():>6.2f}{top1():>6.2f}{top5():>6.2f}" + " " * 70
             )
             remaining = (
                 (pbar.total - pbar.n) / pbar.format_dict["rate"]
@@ -152,6 +168,7 @@ def main(args):
     print("Running parameters:\n")
     print(yaml.dump(vars(args), indent=4))
     cfg = utils.load_config(ROOT_DIR / "configs", args.cfg)
+    print(yaml.dump(cfg, indent=4))
     train(cfg, vars(args))
 
 

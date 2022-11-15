@@ -17,14 +17,12 @@ def data_loader(
          transforms.RandomCrop(cfg['crop_size']),
          transforms.RandomHorizontalFlip(),
          transforms.ToTensor(),
-         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
          ])
 
     tsfm_val = transforms.Compose(
         [transforms.Resize(cfg['input_size']),
          transforms.CenterCrop(cfg['crop_size']),
          transforms.ToTensor(),
-         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
          ])
     dataset_train = MyDataset(Path(cfg['dataset']) / 'ILSVRC2012_img_train', Path(cfg['datalist']) / f"{cfg['model']}_train.txt",
                               transform=tsfm_train)
@@ -84,10 +82,3 @@ def read_labeled_image_list(directory, data_list):
             item = os.path.join(directory, image), label
             samples.append(item)
     return samples
-
-
-if __name__ == '__main__':
-    new_data_set = MyDataset('/ssd/gkartzoni/imagenet-1k/ILSVRC2012_img_train',
-                             '/ssd/ntrougkas/L-CAM/datalist/ILSVRC/VGG16_train.txt',
-                             transforms.Resize(256))
-    print(new_data_set[4])

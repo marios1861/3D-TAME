@@ -2,7 +2,7 @@ input_size: 256
 crop_size: 224
 dataset: /home/marios/Documents/imagenet-1k # Absolute path to dataset dir
 datalist: /home/marios/Documents/T-TAME/datalist/ILSVRC # Absolute path to datalist dir
-model:  vgg16  # Model name
+model: vgg16  # Model name
 batch_size: 32
 num_workers: 8
 layers: 'features.16 features.23 features.30'

@@ -79,7 +79,7 @@ def get_checkpoint_dir(cfg_name: str,
         checkpoint_dir = checkpoint_dir / f'epoch_{epoch}.pt'
     else:
         print(checkpoint_dir)
-        epochs = [int(x.stem.replace("epoch", "")) for x in checkpoint_dir.iterdir()]
+        epochs = [int(x.stem.replace("epoch_", "")) for x in checkpoint_dir.iterdir()]
         epochs.append(0)
         checkpoint_dir = checkpoint_dir / f'epoch_{max(epochs)}.pt'
     return checkpoint_dir

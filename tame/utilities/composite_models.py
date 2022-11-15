@@ -322,6 +322,16 @@ class Generic(nn.Module):
         self.c: Optional[torch.Tensor] = None
         self.noisy_masks = noisy_masks
 
+        # if Generic.is_transformer(mdl):
+        #     self.attn_mech = nn.Sequential(preprocess(), self.attn_mech)
+
+    @staticmethod
+    def is_transformer(mdl: nn.Module) -> bool:
+        for module in mdl.modules():
+            if isinstance(module, nn.MultiheadAttention):
+                return True
+        return False
+
     def forward(
         self, x: torch.Tensor, label: Optional[torch.LongTensor] = None
     ) -> torch.Tensor:
@@ -433,7 +443,9 @@ class Arrangement(nn.Module):
         self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
     ) -> torch.Tensor:
         B, C, H, W = masks.size()
-        indexes = labels.expand(H, W, 1, B).permute(*range(masks.ndim - 1, -1, -1))
+        indexes = labels.expand(H, W, 1, B).permute(
+            *torch.arange(masks.ndim - 1, -1, -1)  # type: ignore
+        )
         masks = torch.gather(masks, 1, indexes)  # select masks
         masks = F.interpolate(
             masks, size=(224, 224), mode="bilinear", align_corners=False

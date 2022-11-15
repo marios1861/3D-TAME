@@ -103,6 +103,7 @@ def normalize(tensor):
     return normalize
 
 
+@torch.no_grad()
 def accuracy(logits: torch.Tensor, target: torch.Tensor, topk=(1,)):
     """
     Compute the top k accuracy of classification results.

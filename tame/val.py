@@ -68,29 +68,29 @@ def run(
     ADs = [AverageMeter() for _ in percent_list]
     ICs = [AverageMeter() for _ in percent_list]
     for _, (images, labels) in bar:
-        with torch.cuda.amp.autocast():
-            images, labels = images.cuda(), labels.cuda()  # type: ignore
-            images: torch.Tensor
-            labels: torch.LongTensor
-            logits: torch.Tensor = model(images)
-            masks = model.get_c(labels)
+        # with torch.cuda.amp.autocast():
+        images, labels = images.cuda(), labels.cuda()  # type: ignore
+        images: torch.Tensor
+        labels: torch.LongTensor
+        logits: torch.Tensor = model(images)
+        masks = model.get_c(labels)
 
-            losses_vals = model.get_loss(logits, labels, masks)
-            for loss, loss_val in zip(losses, losses_vals):
-                loss.update(loss_val.item())
-            chosen_logits = logits.gather(1, labels.unsqueeze(-1)).squeeze()
-            masks = metrics.normalizeMinMax(masks)
-            masked_images_list = metrics.get_masked_inputs(
-                images, masks, labels, img_size, percent_list, model.noisy_masks
-            )
-            new_logits_list = [model(masked_images) for masked_images in masked_images_list]
-            new_logits_list = [
-                new_logits.gather(1, labels.unsqueeze(-1)).squeeze()
-                for new_logits in new_logits_list
-            ]
-            for AD, IC, new_logits in zip(ADs, ICs, new_logits_list):
-                AD.update(metrics.get_AD(chosen_logits, new_logits))
-                IC.update(metrics.get_IC(chosen_logits, new_logits))
+        losses_vals = model.get_loss(logits, labels, masks)
+        for loss, loss_val in zip(losses, losses_vals):
+            loss.update(loss_val.item())
+        chosen_logits = logits.gather(1, labels.unsqueeze(-1)).squeeze()
+        masks = metrics.normalizeMinMax(masks)
+        masked_images_list = metrics.get_masked_inputs(
+            images, masks, labels, img_size, percent_list, model.noisy_masks
+        )
+        new_logits_list = [model(masked_images) for masked_images in masked_images_list]
+        new_logits_list = [
+            new_logits.gather(1, labels.unsqueeze(-1)).squeeze()
+            for new_logits in new_logits_list
+        ]
+        for AD, IC, new_logits in zip(ADs, ICs, new_logits_list):
+            AD.update(metrics.get_AD(chosen_logits, new_logits))
+            IC.update(metrics.get_IC(chosen_logits, new_logits))
 
     if pbar:
         losses_str = "".join(
