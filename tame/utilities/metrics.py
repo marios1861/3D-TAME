@@ -1,3 +1,4 @@
+import math
 from typing import List
 
 import cv2
@@ -6,6 +7,32 @@ import torch
 import torchvision.transforms as transforms
 from sklearn import metrics
 from torch.nn import functional as F
+
+
+def drop_Npercent(cam_map, percent):
+    # Select N percent of pixels
+    if percent == 0:
+        return cam_map
+
+    N, C, H, W = cam_map.size()
+    cam_map_tmp = cam_map
+    f = torch.flatten(cam_map)
+    value = int(H * W * percent)
+    # print(value)
+    m = torch.kthvalue(f, value)
+    cam_map_tmp[cam_map_tmp < m.values] = 0
+    num_pixels = math.ceil((1 - percent) * (H * W))
+    k = torch.count_nonzero(cam_map_tmp > 0) - num_pixels
+    k = math.floor(k)
+    if k >= 1:
+        indices = torch.nonzero(cam_map == m.values)
+        for pi in range(0, int(k)):
+            cam_map_tmp[indices[pi][0], indices[pi][1], indices[pi][2], indices[pi][3]] = 0
+    cam_map = cam_map_tmp
+    #   cam_map[cam_map!=0] = 1
+    # k = torch.count_nonzero(cam_map_tmp>0) - num_pixels
+    #    print(k)
+    return cam_map
 
 
 def show_cam_on_image(
@@ -56,17 +83,24 @@ def normalizeMinMax4Dtensor(Att_map):
     return Att_map
 
 
-def normalizeMinMax(cam_map: torch.Tensor) -> torch.Tensor:
-    cam_map_min = torch.min(cam_map)
-    cam_map -= cam_map_min
-    cam_map /= torch.max(cam_map) - cam_map_min
-    return cam_map
+def normalizeMinMax(cam_maps: torch.Tensor) -> torch.Tensor:
+    # min reduces the dimension, we want to reduce B, C, H, W to B so we need
+    # to apply min 3 times to the last dimension
+    cam_map_mins = cam_maps
+    cam_map_maxs = cam_maps
+    for _ in range(0, 3):
+        cam_map_mins, _ = cam_map_mins.min(dim=-1)
+        cam_map_maxs, _ = cam_map_maxs.max(dim=-1)
+    # now both of these tensors are 1-dimensional holding the min and the max
+    # of each batch
+    cam_maps -= cam_map_mins.view(-1, 1, 1, 1)
+    cam_maps /= (cam_map_maxs - cam_map_mins).view(-1, 1, 1, 1)
+    return cam_maps
 
 
 def get_masked_inputs(
     inp: torch.Tensor,
     masks: torch.Tensor,
-    labels: torch.LongTensor,
     img_size: int,
     percent: List[float],
     noisy_masks: bool = True
@@ -129,16 +163,6 @@ def get_AUC(gt_labels, pred_scores):
     return res
 
 
-def _to_numpy(v):
-    v = torch.squeeze(v)
-    if torch.is_tensor(v):
-        v = v.cpu()
-        v = v.numpy()
-    elif isinstance(v, torch.autograd.Variable):
-        v = v.cpu().data.numpy()
-    return v
-
-
 def get_AD(original_logits: torch.Tensor, new_logits: torch.Tensor) -> float:
     AD = ((original_logits - new_logits).clip(min=0) / original_logits).sum() * (
         100 / original_logits.size()[0]
@@ -147,7 +171,7 @@ def get_AD(original_logits: torch.Tensor, new_logits: torch.Tensor) -> float:
 
 
 def get_IC(original_logits: torch.Tensor, new_logits: torch.Tensor) -> float:
-    IC = (new_logits - original_logits).clip(min=0).sum() * (
+    IC = ((new_logits - original_logits) > 0).sum() * (
         100 / original_logits.size()[0]
     )
     return IC.item()

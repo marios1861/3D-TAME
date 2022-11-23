@@ -376,7 +376,6 @@ class Generic(nn.Module):
             ndims = masks.ndim
             indexes = labels.expand(H, W, 1, B).permute(*range(ndims - 1, -1, -1))
             masks = torch.gather(masks, 1, indexes)
-            print(f"c shape = {masks.shape}")
             return masks
 
 
