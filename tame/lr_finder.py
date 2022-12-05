@@ -1,138 +1,126 @@
+"""LR finder test
+Generate the loss to lr curve of a model given a configuration
+Usage:
+    $ python -m tame.val --cfg resnet50_new.yaml
+"""
 import argparse
 import json
-import os
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
-import numpy as np
 import torch
-import torch.optim as optim
-import torchvision.models as models
+from torch.cuda import amp
 from tqdm.auto import tqdm
+import yaml
 
-from utilities.composite_models import Generic
-from utilities.load_data import data_loader
-
-# Paths
-from utilities.model_prep import model_prep
-
-os.chdir('../')
-ROOT_DIR = os.getcwd()
-print('Project Root Dir:', ROOT_DIR)
-
-# Static paths
-data_dir = os.path.join(ROOT_DIR, 'snapshots', 'data', 'LR')
-
-# Default parameters
-num_workers = 4
+from . import utilities as utils
+from .utilities import AverageMeter
 
 
 def get_arguments():
-    parser = argparse.ArgumentParser(description='LR finder')
-    parser.add_argument("--img-dir", type=str, help='Directory of training images')
-    parser.add_argument('--data-dir', type=str, default=data_dir)
-    parser.add_argument("--train-list", type=str)
-    parser.add_argument("--batch-size", type=int)
-    parser.add_argument("--input-size", type=int, default=256)
-    parser.add_argument("--crop-size", type=int, default=224)
-    parser.add_argument("--num-workers", type=int, default=num_workers)
-    parser.add_argument("--model", type=str, default='vgg16')
-    parser.add_argument("--layers", type=str, default='features.16 features.23 features.30')
-    parser.add_argument("--wd", type=float, default=5e-4)
-    parser.add_argument("--version", type=str, default='TAME',
-                        choices=['TAME', 'Noskipconnection', 'NoskipNobatchnorm', 'Sigmoidinfeaturebranch'])
+    parser = argparse.ArgumentParser(description="LR finder")
+    parser.add_argument(
+        "--cfg", type=str, default="default.yaml", help="config script name (not path)"
+    )
+    parser.add_argument("--beta", type=float, default=0.999)
+    parser.add_argument(
+        "--init", type=float, default=1e-8, help="initial learning rate"
+    )
+    parser.add_argument("--final", type=float, default=10, help="final learning rate")
     return parser.parse_args()
 
 
-def get_model(args):
-    mdl = model_prep(args.model)
-    mdl = Generic(mdl, args.layers.split(), args.version)
-    mdl.cuda()
-    return mdl
+def find_lr(cfg: Dict[str, Any], args: Dict[str, Any]
+            ) -> Tuple[List[float], List[float]]:
+    beta = args["beta"]
 
+    # Dataloader
+    dataloader = utils.data_loader(cfg)[0]
 
-def find_lr(args, init_value=1e-8, final_value=10., beta=0.999):
-    net = get_model(args)
-    net.requires_grad_(requires_grad=False)
-    net.attn_mech.requires_grad_()
+    # Model
+    model = utils.get_model(cfg)
 
-    net.train()
+    # Optimizer
+    optimizer = utils.get_optim(cfg, model)
 
-    trn_loader = data_loader(args)
-    num = len(trn_loader)-1
-    mult = (final_value / init_value) ** (1/num)
-    lr = init_value
+    model.requires_grad_(False)
+    model.attn_mech.requires_grad_()
+    model.train()
 
-    weights = [weight for name, weight in net.attn_mech.named_parameters() if 'weight' in name]
-    biases = [bias for name, bias in net.attn_mech.named_parameters() if 'bias' in name]
-    torch.autograd.set_detect_anomaly(True)
+    num = len(dataloader) - 1
+    mult = (args["final"] / args["init"]) ** (1 / num)
+    lr = args["init"]
+    for group in optimizer.param_groups:
+        group["lr"] = lr
 
-    optimizer = optim.SGD([{'params': weights, 'lr': lr, 'weight_decay': args.wd},
-                           {'params': biases, 'lr': lr * 2}],
-                          momentum=0.9, nesterov=True)
-
-    optimizer.param_groups[0]['lr'] = lr
-    optimizer.param_groups[1]['lr'] = 2 * lr
-
-    avg_loss = 0.
-    best_loss = 0.
-
-    batch_num = 0
-    losses = []
+    avg_loss = AverageMeter(a=(1 - beta))
+    best_loss = 0.0
+    loss_list = []
     lrs = []
+    print(f"{'GPU mem':>8}{'train loss: current':>20}{'minimum':>8}{'lr':>10}")
+    pbar = tqdm(
+        enumerate(dataloader),
+        total=len(dataloader),
+        bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}",
+    )
+    scaler = amp.GradScaler()
+    for idx, (images, labels) in pbar:
+        idx += 1
+        images, labels = images.cuda(), labels.cuda()
 
-    tq_loader = tqdm(trn_loader,
-                     unit='batches',
-                     bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [ETA: {remaining}, {rate_fmt}{postfix}]')
-    for idx, data in enumerate(tq_loader):
-        batch_num += 1
-        # As before, get the loss for this mini-batch of inputs/outputs
-        inputs, labels = data
-        inputs, labels = inputs.cuda(), labels.cuda()
-        optimizer.zero_grad()
+        # forward pass
+        with amp.autocast():
+            logits = model(images, labels)
+            masks = model.get_a(labels)
+            losses = model.get_loss(logits, labels, masks)
+            loss = losses[0]
 
-        logits = net(inputs, labels)
-        masks = net.get_a(labels.long())
-        loss, a, b, c = net.get_loss(logits, labels, masks)
-
+        # Backward pass
+        scaler.scale(loss).backward()  # type: ignore
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad(set_to_none=True)
+        # Update the lr for the next step
         # Compute the smoothed loss
-        avg_loss = beta * avg_loss + (1-beta) * loss.item()
-        smoothed_loss = avg_loss / (1 - beta**batch_num)
+        avg_loss.update(loss.item())
+        smoothed_loss = avg_loss() / (1 - beta**idx)
         # Stop if the loss is exploding
-        if batch_num > 1 and smoothed_loss > 4 * best_loss:
-            return lrs, losses
+        if idx > 1 and smoothed_loss > 4 * best_loss:
+            return lrs, loss_list
         # Record the best loss
-        if smoothed_loss < best_loss or batch_num == 1:
+        if smoothed_loss < best_loss or idx == 1:
             best_loss = smoothed_loss
-        losses.append(smoothed_loss)
-        postfix = {'Current Loss': smoothed_loss, 'Min Loss': best_loss,
-                   'Current LR': lr}
-
-        tq_loader.set_postfix(postfix)
+        loss_list.append(smoothed_loss)
+        mem = "%.3gG" % (
+            torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0
+        )
+        pbar.desc = f"{mem:>8}{smoothed_loss:>20.2f}{best_loss:>8.2f}{lr:>10.3e}"
 
         lrs.append(lr)
-        # Do the SGD step
-        loss.backward()
-        optimizer.step()
-        # Update the lr for the next step
         lr *= mult
+        for group in optimizer.param_groups:
+            group["lr"] = lr
 
-        optimizer.param_groups[0]['lr'] = lr
-        optimizer.param_groups[1]['lr'] = 2 * lr
-
-    return lrs, losses
-
-
-def main():
-    args = get_arguments()
-    print('Running parameters:\n')
-    print(json.dumps(vars(args), indent=4))
-    args.train_list = os.path.join(ROOT_DIR, 'datalist', 'ILSVRC', args.train_list)
-    os.makedirs(data_dir, exist_ok=True)
-    lrs, losses = find_lr(args)
-    json_dir = os.path.join(args.data_dir, f'{args.model}_{args.version}_{args.batch_size}.json')
-
-    with open(json_dir, mode='x') as loss_samples_file:
-        json.dump((lrs, losses), loss_samples_file)
+    return lrs, loss_list
 
 
-if __name__ == '__main__':
-    main()
+def save_data(data: Tuple[List[float], List[float]], file_path: Path):
+    with open(file_path, mode="x") as file:
+        json.dump(data, file)
+
+
+def main(args: Dict[str, Any]):
+    FILE = Path(__file__).resolve()
+    ROOT_DIR = FILE.parents[1]
+    print("Running parameters:\n")
+    cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
+    print(yaml.dump(cfg, indent=4))
+    data_dir = ROOT_DIR / "LR"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    file_path = data_dir / Path(args["cfg"]).with_suffix(".json")
+    data = find_lr(cfg, args)
+    save_data(data, file_path)
+
+
+if __name__ == "__main__":
+    main(vars(get_arguments()))

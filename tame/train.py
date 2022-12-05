@@ -61,7 +61,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
         loss_var_mask = AverageMeter()  # Mask variation loss
 
         # freeze classifier
-        model.requires_grad_(requires_grad=False)
+        model.requires_grad_(False)
         model.attn_mech.requires_grad_()
 
         model.train()
@@ -166,7 +166,7 @@ def main(args):
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(vars(args), indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs", args.cfg)
+    cfg = utils.load_config(ROOT_DIR / "configs" / args.cfg)
     print(yaml.dump(cfg, indent=4))
     train(cfg, vars(args))
 

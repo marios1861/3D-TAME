@@ -1,4 +1,4 @@
-"""
+"""Evaluation Script
 Evaluate an attention mechanism model on a pretrained classifier
 
 Usage:
@@ -131,7 +131,7 @@ def main(args):
     print("Running parameters:\n")
     args = vars(args)
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs", args['cfg'])
+    cfg = utils.load_config(ROOT_DIR / "configs" / args['cfg'])
     print(yaml.dump(cfg, indent=4))
     stats = []
     for epoch in range(0, cfg['epochs']):
