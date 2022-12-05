@@ -1,0 +1,3 @@
+model: vit_b_16  # Model name
+layers: 'encoder.layers.encoder_layer_9 encoder.layers.encoder_layer_10 encoder.layers.encoder_layer_11'
+

@@ -2,7 +2,7 @@
 Evaluate an attention mechanism model on a pretrained classifier
 
 Usage:
-    $ python scripts/val.py --cfg resnet50_new.yaml --test --with-val
+    $ python -m tame.val --cfg resnet50_new.yaml --test --with-val
 """
 import argparse
 from pathlib import Path

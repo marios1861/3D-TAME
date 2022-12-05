@@ -309,12 +309,16 @@ class Generic(nn.Module):
 
         # Required for attention mechanism initialization
         ft_size = [o.shape for o in out.values()]
-
-        self.arr = "1-1"
         # Build Attention mechanism
-        self.attn_mech = AttentionMechFactory.create_attention(attn_version, ft_size)
+        if Generic.is_transformer(mdl):
+            ft_size = [torch.Size([2, 768, 14, 14]) for _ in out.values()]
+            self.attn_mech = AttentionMechFactory.create_attention(attn_version, ft_size)
+            self.attn_mech = nn.Sequential(Generic.PreprocessSeq(), self.attn_mech)
+        else:
+            self.attn_mech = AttentionMechFactory.create_attention(attn_version, ft_size)
 
         # Get loss and forward training method
+        self.arr = "1-1"
         arrangement = Arrangement("1-1", self.body, self.output)
         self.train_policy, self.get_loss = (arrangement.train_policy, arrangement.loss)
 
@@ -322,15 +326,26 @@ class Generic(nn.Module):
         self.c: Optional[torch.Tensor] = None
         self.noisy_masks = noisy_masks
 
-        # if Generic.is_transformer(mdl):
-        #     self.attn_mech = nn.Sequential(preprocess(), self.attn_mech)
-
     @staticmethod
     def is_transformer(mdl: nn.Module) -> bool:
         for module in mdl.modules():
             if isinstance(module, nn.MultiheadAttention):
                 return True
         return False
+
+    class PreprocessSeq(nn.Module):
+        def __init__(self):
+            super(Generic.PreprocessSeq, self).__init__()
+            self.fold = nn.Fold((14, 14), 14, 14)
+
+        def forward(self, seq_list: List[torch.Tensor]) -> List[torch.Tensor]:
+            # discard class tocken
+            seq_list = [seq[:, :196, :] for seq in seq_list]
+            # switch dimensions
+            seq_list = [seq.permute(0, 2, 1) for seq in seq_list]
+            # reconstruct patches
+            seq_list = [torch.reshape(seq, (-1, 768, 14, 14)) for seq in seq_list]
+            return seq_list
 
     def forward(
         self, x: torch.Tensor, label: Optional[torch.LongTensor] = None

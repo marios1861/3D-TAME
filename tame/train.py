@@ -2,12 +2,13 @@
 Train an attention mechanism model on a pretrained classifier
 
 Usage:
-    $ python tame/train.py --cfg resnet50_SGD.yaml --epoch -1
+    $ python -m tame.train --cfg resnet50_SGD.yaml --epoch -1
 """
 
 import argparse
 from pathlib import Path
 from typing import Any, Dict
+import warnings
 
 import torch
 import yaml
@@ -76,39 +77,37 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
             labels: torch.LongTensor
 
             # forward pass
-            # with amp.autocast():
-            logits = model(images, labels)
-            masks = model.get_a(labels)
-            (
-                loss_val,
-                loss_ce_val,
-                loss_mean_mask_val,
-                loss_var_mask_val,
-            ) = model.get_loss(logits, labels, masks)
-            # gradients that aren't computed are set to None
-            optimizer.zero_grad(set_to_none=True)
-
-            # backwards pass
-            loss_val.backward()
-
-            # optimizer step
-            optimizer.step()
-
-            # lr reduction step
-            scheduler.step()
-            # # Backward
-            # scaler.scale(loss_val).backward()  # type: ignore
-            # # Optimize
-            # # scaler.unscale_(optimizer)  # unscale gradients
-            # # torch.nn.utils.clip_grad_norm_(model.attn_mech.parameters(), max_norm=10.0)
-            # scaler.step(optimizer)
-            # scaler.update()
+            with amp.autocast():
+                logits = model(images, labels)
+                masks = model.get_a(labels)
+                (
+                    loss_val,
+                    loss_ce_val,
+                    loss_mean_mask_val,
+                    loss_var_mask_val,
+                ) = model.get_loss(logits, labels, masks)
+            # # gradients that aren't computed are set to None
             # optimizer.zero_grad(set_to_none=True)
 
-            # Skip 10 first batches to make sure that loss gradient
-            # has stabilized enough for step to run step
-            # if i > 10:
-            #     scheduler.step()
+            # # backwards pass
+            # loss_val.backward()
+
+            # # optimizer step
+            # optimizer.step()
+
+            # Backward
+            scaler.scale(loss_val).backward()  # type: ignore
+            # Optimize
+            # scaler.unscale_(optimizer)  # unscale gradients
+            # torch.nn.utils.clip_grad_norm_(model.attn_mech.parameters(), max_norm=10.0)
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad(set_to_none=True)
+
+            # lr reduction step
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                scheduler.step()
 
             logits1 = torch.squeeze(logits)
             top1_val, top5_val = metrics.accuracy(logits1, labels.long(), topk=(1, 5))
