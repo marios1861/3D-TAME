@@ -9,7 +9,7 @@ from .composite_models import Generic
 
 def get_model(cfg: Dict[str, Any]) -> Generic:
     mdl = model_prep(cfg["model"])
-    mdl = Generic(mdl, cfg["layers"].split(), cfg["version"], cfg["noisy_masks"])
+    mdl = Generic(cfg["model"], mdl, cfg["layers"].split(), cfg["version"], cfg["noisy_masks"])
     mdl.cuda()
     return mdl
 

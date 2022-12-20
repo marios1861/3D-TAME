@@ -8,3 +8,4 @@ torchvision~=0.13.1
 tqdm~=4.64.0
 pyyaml~=6.0
 pandas~=1.5
+einops>=0.6

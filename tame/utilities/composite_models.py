@@ -276,6 +276,7 @@ class Generic(nn.Module):
 
     def __init__(
         self,
+        name: str,
         mdl: nn.Module,
         feature_layers: List[str],
         attn_version: str,
@@ -311,9 +312,12 @@ class Generic(nn.Module):
         ft_size = [o.shape for o in out.values()]
         # Build Attention mechanism
         if Generic.is_transformer(mdl):
-            ft_size = [torch.Size([2, 768, 14, 14]) for _ in out.values()]
+            if 'vit_b_16' == name:
+                ft_size = [torch.Size([2, 768, 14, 14]) for _ in out.values()]
+            else:
+                raise NotImplementedError(f'TAME not implemented for the transformer {name}.')
             self.attn_mech = AttentionMechFactory.create_attention(attn_version, ft_size)
-            self.attn_mech = nn.Sequential(Generic.PreprocessSeq(), self.attn_mech)
+            self.attn_mech = nn.Sequential(Generic.PreprocessSeq(name), self.attn_mech)
         else:
             self.attn_mech = AttentionMechFactory.create_attention(attn_version, ft_size)
 
@@ -334,11 +338,15 @@ class Generic(nn.Module):
         return False
 
     class PreprocessSeq(nn.Module):
-        def __init__(self):
+        def __init__(self, name: str):
             super(Generic.PreprocessSeq, self).__init__()
-            self.fold = nn.Fold((14, 14), 14, 14)
+            implementations = {'vit_b_16': self.forward_vit_b_16}
+            try:
+                self.forward = implementations[name]
+            except KeyError:
+                raise KeyError(f"Feature preprocessing not implemented for transformer {name}")
 
-        def forward(self, seq_list: List[torch.Tensor]) -> List[torch.Tensor]:
+        def forward_vit_b_16(self, seq_list: List[torch.Tensor]) -> List[torch.Tensor]:
             # discard class tocken
             seq_list = [seq[:, :196, :] for seq in seq_list]
             # switch dimensions
