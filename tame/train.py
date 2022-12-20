@@ -161,14 +161,15 @@ def get_arguments():
     return parser.parse_args()
 
 
-def main(args):
+def main(args: Any):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(vars(args), indent=4))
     cfg = utils.load_config(ROOT_DIR / "configs" / args.cfg)
     print(yaml.dump(cfg, indent=4))
-    train(cfg, vars(args))
+    args = vars(args)
+    train(cfg, args)
 
 
 if __name__ == "__main__":

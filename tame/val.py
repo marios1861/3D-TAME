@@ -6,7 +6,8 @@ Usage:
 """
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
 
 import torch
 import yaml
@@ -15,6 +16,46 @@ from tqdm import tqdm
 
 from . import utilities as utils
 from .utilities import AverageMeter, metrics
+
+
+@dataclass
+class AD_IC:
+    model: torch.nn.Module
+    img_size: int
+    percent_list: List[float] = [0.0, 0.5, 0.85]
+    noisy_masks: bool = False
+    ADs: List[AverageMeter] = []
+    ICs: List[AverageMeter] = []
+
+    def __post_init__(self):
+        self.ADs = [AverageMeter(type="avg") for _ in self.percent_list]
+        self.ICs = [AverageMeter(type="avg") for _ in self.percent_list]
+
+    @torch.no_grad()
+    def compute_AD_IC(
+        self,
+        images: torch.Tensor,
+        chosen_logits: torch.Tensor,
+        model_truth: torch.Tensor,
+        masks: torch.Tensor,
+    ):
+        masks = metrics.normalizeMinMax(masks)
+        masked_images_list = metrics.get_masked_inputs(
+            images, masks, self.img_size, self.percent_list, self.noisy_masks
+        )
+        new_logits_list = [
+            self.model(masked_images) for masked_images in masked_images_list
+        ]
+        new_logits_list = [
+            new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
+            for new_logits in new_logits_list
+        ]
+        for AD, IC, new_logits in zip(self.ADs, self.ICs, new_logits_list):
+            AD.update(metrics.get_AD(chosen_logits, new_logits))
+            IC.update(metrics.get_IC(chosen_logits, new_logits))
+
+    def get_results(self) -> Tuple[List[float], List[float]]:
+        return [AD() for AD in self.ADs], [IC() for IC in self.ICs]
 
 
 @torch.no_grad()
@@ -34,7 +75,7 @@ def run(
         else:
             dataloader = utils.data_loader(cfg)[2]
         # Model
-        cfg['noisy_masks'] = False
+        cfg["noisy_masks"] = False
         model = utils.get_model(cfg)
         # Load model
         utils.load_model(args["cfg"], cfg, model, epoch=args.get("epoch"))
@@ -66,8 +107,7 @@ def run(
     )
 
     losses = [AverageMeter(type="avg") for _ in range(0, 4)]
-    ADs = [AverageMeter(type="avg") for _ in percent_list]
-    ICs = [AverageMeter(type="avg") for _ in percent_list]
+    metric_AD_IC = AD_IC(model, img_size, percent_list=percent_list)
     for _, (images, labels) in bar:
         # with torch.cuda.amp.autocast():
         images, labels = images.cuda(), labels.cuda()  # type: ignore
@@ -80,22 +120,13 @@ def run(
 
         for loss, loss_val in zip(losses, losses_vals):
             loss.update(loss_val.item())
+
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
         masks = model.get_c(model_truth)
-        masks = metrics.normalizeMinMax(masks)
-        masked_images_list = metrics.get_masked_inputs(
-            images, masks, img_size, percent_list, model.noisy_masks
-        )
+        metric_AD_IC.compute_AD_IC(images, chosen_logits, model_truth, masks)
 
-        new_logits_list = [model(masked_images) for masked_images in masked_images_list]
-        new_logits_list = [
-            new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
-            for new_logits in new_logits_list
-        ]
-        for AD, IC, new_logits in zip(ADs, ICs, new_logits_list):
-            AD.update(metrics.get_AD(chosen_logits, new_logits))
-            IC.update(metrics.get_IC(chosen_logits, new_logits))
+    ADs, ICs = metric_AD_IC.get_results()
 
     if pbar:
         losses_str = "".join(
@@ -104,15 +135,14 @@ def run(
         AD_IC_str = "".join(
             f"{num_pair:>{align}}"
             for num_pair, align in zip(
-                (f"{AD():.2f}/{IC():.2f}" for AD, IC in zip(ADs, ICs)),
-                [12, 12, 12]
+                (f"{AD:.2f}/{IC:.2f}" for AD, IC in zip(ADs, ICs)), [12, 12, 12]
             )
         )
         pbar.desc = f"{pbar.desc[:-70]}{losses_str}{AD_IC_str}"
     return [
         [loss.avg for loss in losses],
-        [AD.avg for AD in ADs],
-        [IC.avg for IC in ICs],
+        ADs,
+        ICs,
     ]
 
 
@@ -125,17 +155,17 @@ def get_arguments():
     return parser.parse_args()
 
 
-def main(args):
+def main(args: Any):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     args = vars(args)
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs" / args['cfg'])
+    cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
     print(yaml.dump(cfg, indent=4))
     stats = []
-    for epoch in range(0, cfg['epochs']):
-        args['epoch'] = epoch
+    for epoch in range(0, cfg["epochs"]):
+        args["epoch"] = epoch
         stats.append(run(cfg, args))
         print(stats[epoch])
     # print(stats)
