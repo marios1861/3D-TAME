@@ -6,13 +6,20 @@ Usage:
 """
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
 
 import torch
 import yaml
 from torchvision import transforms
 from tqdm import tqdm
+from pytorch_grad_cam.metrics.road import (
+    ROADMostRelevantFirst,
+    ROADLeastRelevantFirst,
+    ROADLeastRelevantFirstAverage,
+    ROADMostRelevantFirstAverage,
+    ROADCombined,
+)
 
 from . import utilities as utils
 from .utilities import AverageMeter, metrics
@@ -32,7 +39,7 @@ class AD_IC:
         self.ICs = [AverageMeter(type="avg") for _ in self.percent_list]
 
     @torch.no_grad()
-    def compute_AD_IC(
+    def __call__(
         self,
         images: torch.Tensor,
         chosen_logits: torch.Tensor,
@@ -41,21 +48,94 @@ class AD_IC:
     ):
         masks = metrics.normalizeMinMax(masks)
         masked_images_list = metrics.get_masked_inputs(
-            images, masks, self.img_size, self.percent_list, self.noisy_masks
+            images,
+            masks,
+            self.img_size,
+            self.percent_list,
+            self.noisy_masks,
         )
-        new_logits_list = [
-            self.model(masked_images) for masked_images in masked_images_list
-        ]
+
         new_logits_list = [
             new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
-            for new_logits in new_logits_list
+            for new_logits in [
+                self.model(masked_images) for masked_images in masked_images_list
+            ]
         ]
+
         for AD, IC, new_logits in zip(self.ADs, self.ICs, new_logits_list):
             AD.update(metrics.get_AD(chosen_logits, new_logits))
             IC.update(metrics.get_IC(chosen_logits, new_logits))
 
     def get_results(self) -> Tuple[List[float], List[float]]:
         return [AD() for AD in self.ADs], [IC() for IC in self.ICs]
+
+
+@dataclass
+class ROAD:
+    road: Union[
+        List[ROADMostRelevantFirst],
+        List[ROADLeastRelevantFirst],
+        ROADMostRelevantFirst,
+        ROADLeastRelevantFirst,
+        ROADMostRelevantFirstAverage,
+        ROADLeastRelevantFirstAverage,
+        ROADCombined,
+    ]
+    model: torch.nn.Module
+    metric: Union[List[AverageMeter], AverageMeter] = []
+
+    def post_init(self):
+        if isinstance(self.road, (List)):
+            self.metric = []
+            for i in range(len(self.road)):
+                self.metric.append(AverageMeter(type="avg"))
+        else:
+            self.metric = AverageMeter(type="avg")
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        input: torch.Tensor,
+        cams: torch.Tensor,
+        targets: List[Callable],
+    ):
+        if isinstance(self.road, (List)):
+            assert isinstance(self.metric, List)
+            scores = [
+                metric(input, cams.cpu().detach().numpy(), targets, self.model)
+                for metric in self.road
+            ]
+            for metric, score in zip(self.metric, scores):
+                metric.update(score)  # type: ignore
+        else:
+            assert isinstance(self.metric, AverageMeter)
+            score = self.road(input, cams.cpu().detach().numpy(), targets, self.model)
+            self.metric.update(score)  # type: ignore
+
+    def get_results(self) -> Union[float, List[float]]:
+        if isinstance(self.metric, List):
+            return [metric() for metric in self.metric]
+        else:
+            assert isinstance(self.metric, AverageMeter)
+            return self.metric()
+
+
+class SoftmaxSelect:
+    def __init__(self, model_truth):
+        self.model_truth = model_truth
+
+    class SingleSelect:
+        def __init__(self, label):
+            self.label = label
+
+        def __call__(self, single_output):
+            single_output.softmax(dim=-1)[self.label]
+
+    def __call__(self):
+        callables = []
+        for label in zip(self.model_truth):
+            callables.append(self.SingleSelect(label))
+        return callables
 
 
 @torch.no_grad()
@@ -108,6 +188,7 @@ def run(
 
     losses = [AverageMeter(type="avg") for _ in range(0, 4)]
     metric_AD_IC = AD_IC(model, img_size, percent_list=percent_list)
+    metric_ROAD = ROAD(ROADLeastRelevantFirst(), model)
     for _, (images, labels) in bar:
         # with torch.cuda.amp.autocast():
         images, labels = images.cuda(), labels.cuda()  # type: ignore
@@ -124,7 +205,9 @@ def run(
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
         masks = model.get_c(model_truth)
-        metric_AD_IC.compute_AD_IC(images, chosen_logits, model_truth, masks)
+        metric_AD_IC(images, chosen_logits, model_truth, masks)
+        targets = SoftmaxSelect(model_truth)
+        metric_ROAD(images, masks, targets())
 
     ADs, ICs = metric_AD_IC.get_results()
 
