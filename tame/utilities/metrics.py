@@ -1,5 +1,6 @@
+from dataclasses import dataclass, field
 import math
-from typing import List
+from typing import Callable, List, Tuple, Union
 
 import cv2
 import numpy as np
@@ -7,6 +8,124 @@ import torch
 import torchvision.transforms as transforms
 from sklearn import metrics
 from torch.nn import functional as F
+from pytorch_grad_cam.metrics.road import (
+    ROADMostRelevantFirst,
+    ROADLeastRelevantFirst,
+    ROADLeastRelevantFirstAverage,
+    ROADMostRelevantFirstAverage,
+    ROADCombined,
+)
+
+from .avg_meter import AverageMeter
+
+
+@dataclass
+class AD_IC:
+    model: torch.nn.Module
+    img_size: int
+    percent_list: List[float] = field(default_factory=lambda: [0.0, 0.5, 0.85])
+    noisy_masks: bool = False
+    ADs: List[AverageMeter] = field(default_factory=list)
+    ICs: List[AverageMeter] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.ADs = [AverageMeter(type="avg") for _ in self.percent_list]
+        self.ICs = [AverageMeter(type="avg") for _ in self.percent_list]
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        images: torch.Tensor,
+        chosen_logits: torch.Tensor,
+        model_truth: torch.Tensor,
+        masks: torch.Tensor,
+    ):
+        masks = normalizeMinMax(masks)
+        masked_images_list = get_masked_inputs(
+            images,
+            masks,
+            self.img_size,
+            self.percent_list,
+            self.noisy_masks,
+        )
+
+        new_logits_list = [
+            new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
+            for new_logits in [
+                self.model(masked_images) for masked_images in masked_images_list
+            ]
+        ]
+        for AD, IC, new_logits in zip(self.ADs, self.ICs, new_logits_list):
+            AD.update(get_AD(chosen_logits, new_logits))
+            IC.update(get_IC(chosen_logits, new_logits))
+
+    def get_results(self) -> Tuple[List[float], List[float]]:
+        return [AD() for AD in self.ADs], [IC() for IC in self.ICs]
+
+
+@dataclass
+class ROAD:
+    road: Union[
+        List[ROADMostRelevantFirst],
+        List[ROADLeastRelevantFirst],
+        ROADMostRelevantFirst,
+        ROADLeastRelevantFirst,
+        ROADMostRelevantFirstAverage,
+        ROADLeastRelevantFirstAverage,
+        ROADCombined,
+    ]
+    model: torch.nn.Module
+    metric: List[AverageMeter] = field(default_factory=list)
+
+    def __post_init__(self):
+        if isinstance(self.road, (List)):
+            self.metric = []
+            for i in range(len(self.road)):
+                self.metric.append(AverageMeter(type="avg"))
+        else:
+            self.metric = [AverageMeter(type="avg"), AverageMeter(type="avg")]
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        input: torch.Tensor,
+        chosen_logits: torch.Tensor,
+        cams: torch.Tensor,
+        targets: List[Callable],
+    ):
+        if isinstance(self.road, (List)):
+            scores = [
+                metric(input, cams.cpu().detach().numpy(), targets, self.model)
+                for metric in self.road
+            ]
+            for metric, score in zip(self.metric, scores):
+                metric.update(score)  # type: ignore
+        else:
+            score = self.road(input, cams.cpu().detach().numpy(), targets, self.model)
+            self.metric[0].update(get_AD(chosen_logits, torch.tensor(score).cuda()))
+            self.metric[1].update(get_IC(chosen_logits, torch.tensor(score).cuda()))
+            # type: ignore
+
+    def get_results(self) -> List[float]:
+        return [metric() for metric in self.metric]
+
+
+class MaxSelect:
+    def __init__(self, model_truth):
+        self.model_truth = model_truth
+
+    class SingleSelect:
+        def __init__(self, label):
+            self.label = label
+
+        def __call__(self, single_output):
+            return single_output[self.label]
+
+    def __call__(self):
+        callables = []
+        for label in self.model_truth:
+            callables.append(self.SingleSelect(label))
+        return callables
 
 
 def drop_Npercent(cam_map, percent):
@@ -27,7 +146,9 @@ def drop_Npercent(cam_map, percent):
     if k >= 1:
         indices = torch.nonzero(cam_map == m.values)
         for pi in range(0, int(k)):
-            cam_map_tmp[indices[pi][0], indices[pi][1], indices[pi][2], indices[pi][3]] = 0
+            cam_map_tmp[
+                indices[pi][0], indices[pi][1], indices[pi][2], indices[pi][3]
+            ] = 0
     cam_map = cam_map_tmp
     #   cam_map[cam_map!=0] = 1
     # k = torch.count_nonzero(cam_map_tmp>0) - num_pixels
@@ -103,7 +224,7 @@ def get_masked_inputs(
     masks: torch.Tensor,
     img_size: int,
     percent: List[float],
-    noisy_masks: bool = True
+    noisy_masks: bool = True,
 ) -> List[torch.Tensor]:
     B, C, _, _ = masks.size()
     if noisy_masks:
@@ -125,6 +246,7 @@ def get_masked_inputs(
             .expand(H, W, C, B)
             .permute(*range(masks.ndim - 1, -1, -1))
         )
+
     masks_ls = [masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent]
     x_masked_ls = [mask * inp for mask in masks_ls]
     return x_masked_ls
@@ -171,7 +293,5 @@ def get_AD(original_logits: torch.Tensor, new_logits: torch.Tensor) -> float:
 
 
 def get_IC(original_logits: torch.Tensor, new_logits: torch.Tensor) -> float:
-    IC = ((new_logits - original_logits) > 0).sum() * (
-        100 / original_logits.size()[0]
-    )
+    IC = ((new_logits - original_logits) > 0).sum() * (100 / original_logits.size()[0])
     return IC.item()

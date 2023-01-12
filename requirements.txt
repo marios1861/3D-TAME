@@ -10,3 +10,4 @@ pyyaml
 pandas
 einops
 grad-cam
+timm
