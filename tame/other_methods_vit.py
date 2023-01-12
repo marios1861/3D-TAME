@@ -79,7 +79,7 @@ def run(
     )
 
     metric_AD_IC = metrics.AD_IC(model, img_size, percent_list=percent_list)
-    metric_ROAD = metrics.ROAD(ROADLeastRelevantFirst(), model)
+    metric_ROAD = metrics.ROAD(model, ROADLeastRelevantFirst())
 
     if "vit" in cfg["model"]:
         target_layers = [model.blocks[-1].norm1]  # type: ignore
@@ -103,12 +103,11 @@ def run(
 
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
-        targets = metrics.MaxSelect(model_truth)
-        masks = torch.tensor(cam_model(input_tensor=images, targets=targets())).cuda()
-        if masks.dim() == 3:
-            masks = masks.unsqueeze(dim=1)
-        metric_AD_IC(images, chosen_logits, model_truth, torch.tensor(masks).cuda())
-        metric_ROAD(images, chosen_logits, torch.tensor(masks).cuda(), targets())
+        targets = metrics.SoftmaxSelect(model_truth)
+        masks = cam_model(input_tensor=images, targets=targets())
+        metric_ROAD(images, chosen_logits, masks, targets())
+        masks = torch.tensor(masks).cuda().unsqueeze(dim=1)
+        metric_AD_IC(images, chosen_logits, model_truth, masks)
 
     ADs, ICs = metric_AD_IC.get_results()
     ROADs = metric_ROAD.get_results()
@@ -129,7 +128,17 @@ def get_arguments():
         type=str,
         default="GradCam",
         help="explainability method",
-        choices=["GradCam", "HiResCAM", "ScoreCAM", "AblationCam"],
+        choices=[
+            "gradcam",
+            "scorecam",
+            "gradcam++",
+            "ablationcam",
+            "xgradcam",
+            "eigencam",
+            "eigengradcam",
+            "layercam",
+            "fullgrad",
+        ],
     )
     return parser.parse_args()
 

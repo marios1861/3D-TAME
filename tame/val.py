@@ -19,7 +19,7 @@ from pytorch_grad_cam.metrics.road import (
 )
 
 from . import utilities as utils
-from .utilities import AverageMeter, metrics
+from .utilities import metrics
 
 
 @torch.no_grad()
@@ -70,42 +70,40 @@ def run(
         position=0,
     )
 
-    losses = [AverageMeter(type="avg") for _ in range(0, 4)]
     metric_AD_IC = metrics.AD_IC(model, img_size, percent_list=percent_list)
-    metric_ROAD = metrics.ROAD(ROADMostRelevantFirst(), model)
+    metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst())
     for _, (images, labels) in bar:
         # with torch.cuda.amp.autocast():
         images, labels = images.cuda(), labels.cuda()  # type: ignore
         images: torch.Tensor
         labels: torch.LongTensor
         logits: torch.Tensor = model(images)
-        masks_for_loss = model.get_a(labels)
-
-        losses_vals = model.get_loss(logits, labels, masks_for_loss)
-
-        for loss, loss_val in zip(losses, losses_vals):
-            loss.update(loss_val.item())
 
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
         masks = model.get_c(model_truth)
+        masks = metrics.normalizeMinMax(masks)
         metric_AD_IC(images, chosen_logits, model_truth, masks)
-        targets = metrics.MaxSelect(model_truth)
+        masks = torch.nn.functional.interpolate(
+            masks,
+            size=(img_size, img_size),
+            mode="bilinear",
+            align_corners=False,
+        )
+        masks = masks.squeeze().cpu().detach().numpy()
+        targets = metrics.SoftmaxSelect(model_truth)
         metric_ROAD(images, chosen_logits, masks, targets())
 
     ADs, ICs = metric_AD_IC.get_results()
     ROADs = metric_ROAD.get_results()
     if pbar:
-        losses_str = "".join(
-            f"{loss():>{align}.2f}" for loss, align in zip(losses, [16, 6, 6, 6])
-        )
         AD_IC_str = "".join(
             f"{num_pair:>{align}}"
             for num_pair, align in zip(
                 (f"{AD:.2f}/{IC:.2f}" for AD, IC in zip(ADs, ICs)), [12, 12, 12]
             )
         )
-        pbar.desc = f"{pbar.desc[:-70]}{losses_str}{AD_IC_str}"
+        pbar.desc = f"{pbar.desc[:-70]}{AD_IC_str}"
     return [ADs, ICs, ROADs]
 
 
@@ -133,7 +131,7 @@ def main(args: Any):
 
     data = pd.DataFrame(stats)
     data.columns = ["AD", "IC", "ROAD"]  # type: ignore
-    data.to_csv("data.csv", float_format='%.2f')
+    data.to_csv("data.csv", float_format="%.2f")
 
 
 if __name__ == "__main__":

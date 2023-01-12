@@ -40,7 +40,6 @@ class AD_IC:
         model_truth: torch.Tensor,
         masks: torch.Tensor,
     ):
-        masks = normalizeMinMax(masks)
         masked_images_list = get_masked_inputs(
             images,
             masks,
@@ -65,6 +64,7 @@ class AD_IC:
 
 @dataclass
 class ROAD:
+    model: torch.nn.Module
     road: Union[
         List[ROADMostRelevantFirst],
         List[ROADLeastRelevantFirst],
@@ -74,7 +74,6 @@ class ROAD:
         ROADLeastRelevantFirstAverage,
         ROADCombined,
     ]
-    model: torch.nn.Module
     metric: List[AverageMeter] = field(default_factory=list)
 
     def __post_init__(self):
@@ -90,18 +89,17 @@ class ROAD:
         self,
         input: torch.Tensor,
         chosen_logits: torch.Tensor,
-        cams: torch.Tensor,
+        masks: np.ndarray,
         targets: List[Callable],
     ):
+
         if isinstance(self.road, (List)):
-            scores = [
-                metric(input, cams.cpu().detach().numpy(), targets, self.model)
-                for metric in self.road
-            ]
+
+            scores = [metric(input, masks, targets, self.model) for metric in self.road]
             for metric, score in zip(self.metric, scores):
                 metric.update(score)  # type: ignore
         else:
-            score = self.road(input, cams.cpu().detach().numpy(), targets, self.model)
+            score = self.road(input, masks, targets, self.model)
             self.metric[0].update(get_AD(chosen_logits, torch.tensor(score).cuda()))
             self.metric[1].update(get_IC(chosen_logits, torch.tensor(score).cuda()))
             # type: ignore
@@ -110,7 +108,7 @@ class ROAD:
         return [metric() for metric in self.metric]
 
 
-class MaxSelect:
+class SoftmaxSelect:
     def __init__(self, model_truth):
         self.model_truth = model_truth
 
@@ -119,7 +117,7 @@ class MaxSelect:
             self.label = label
 
         def __call__(self, single_output):
-            return single_output[self.label]
+            return single_output.softmax(dim=-1)[self.label]
 
     def __call__(self):
         callables = []
