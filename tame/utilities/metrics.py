@@ -99,13 +99,13 @@ class ROAD:
             self.metric = cast(List[List[AverageMeter]], self.metric)
             scores = [metric(input, masks, targets, self.model, return_diff=False) for metric in self.road]
             for metric, score in zip(self.metric, scores):
-                metric[0].update(get_AD(chosen_logits, torch.tensor(score).cuda()))
-                metric[1].update(get_IC(chosen_logits, torch.tensor(score).cuda()))
+                metric[0].update(get_AD(chosen_logits, torch.tensor(score).to(chosen_logits.device)))
+                metric[1].update(get_IC(chosen_logits, torch.tensor(score).to(chosen_logits.device)))
         else:
             self.metric = cast(List[AverageMeter], self.metric)
             score = self.road(input, masks, targets, self.model, return_diff=False)  # type: ignore
-            self.metric[0].update(get_AD(chosen_logits, torch.tensor(score).cuda()))
-            self.metric[1].update(get_IC(chosen_logits, torch.tensor(score).cuda()))
+            self.metric[0].update(get_AD(chosen_logits, torch.tensor(score).to(chosen_logits.device)))
+            self.metric[1].update(get_IC(chosen_logits, torch.tensor(score).to(chosen_logits.device)))
 
     def get_results(self) -> Union[List[float], List[List[float]]]:
         if get_args(self.metric) == List:
