@@ -140,7 +140,7 @@ def get_arguments():
         description="Evaluation script for methods included in pytorch_grad_cam library"
     )
     parser.add_argument(
-        "--cfg", type=str, default="default.yaml", help="config script name (not path)"
+        "--cfg", type=str, default="vit_b_16.yaml", help="config script name (not path)"
     )
     parser.add_argument("--with-val", action="store_true", help="test with val dataset")
     parser.add_argument(

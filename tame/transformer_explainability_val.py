@@ -1,12 +1,12 @@
 """Evaluation Script
-Evaluate an attention mechanism model on a pretrained classifier
+Evaluate other explainability methods on a pretrained classifier
 
 Usage:
     $ python -m tame.val --cfg resnet50_new.yaml --test --with-val
 """
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Type, cast
 import pandas as pd
 
 import torch
@@ -16,37 +16,43 @@ from tqdm import tqdm
 from pytorch_grad_cam.metrics.road import (
     ROADMostRelevantFirst,
     ROADLeastRelevantFirst,
+    ROADLeastRelevantFirstAverage,
+    ROADMostRelevantFirstAverage,
+    ROADCombined,
 )
+from .transformer_explainability.baselines.ViT.ViT_LRP import (
+    vit_base_patch16_224 as vit_LRP,
+)
+from .transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
+from pytorch_grad_cam.base_cam import BaseCAM
+from pytorch_grad_cam.ablation_layer import AblationLayerVit
 
 from . import utilities as utils
 from .utilities import metrics
 
 
-@torch.no_grad()
+def reshape_transform(tensor, height=14, width=14):
+    result = tensor[:, 1:, :].reshape(tensor.size(0), height, width, tensor.size(2))
+
+    # Bring the channels to the first dimension,
+    # like in CNNs.
+    result = result.transpose(2, 3).transpose(1, 2)
+    return result
+
+
 def run(
-    cfg: Optional[Dict[str, Any]] = None,
-    args: Optional[Dict[str, Any]] = None,
+    cfg: Dict[str, Any],
+    args: Dict[str, Any],
     percent_list: List[float] = [0.0, 0.5, 0.85],
-    model: Optional[utils.Generic] = None,
-    dataloader: Optional[torch.utils.data.DataLoader] = None,  # type: ignore
-    pbar: Optional[tqdm] = None,
 ) -> List[float]:
-    if cfg is not None:
-        assert args is not None
-        # Dataloader
-        if args["with_val"]:
-            dataloader = utils.data_loader(cfg)[1]
-        else:
-            dataloader = utils.data_loader(cfg)[2]
-        # Model
-        cfg["noisy_masks"] = False
-        model = utils.get_model(cfg)
-        # Load model
-        utils.load_model(args["cfg"], cfg, model, epoch=args.get("epoch"))
-        # model.half()
-        model.eval()
-    assert dataloader is not None
-    assert model is not None
+
+    # Dataloader
+    if args["with_val"]:
+        dataloader = utils.data_loader(cfg)[1]
+    else:
+        dataloader = utils.data_loader(cfg)[2]
+    model = vit_LRP(pretrained=True).cuda()
+    model.eval()
 
     # dig through dataloader to find input image size
     transform: transforms.Compose = dataloader.dataset.transform  # type: ignore
@@ -55,62 +61,49 @@ def run(
     ).size[0]
 
     n = len(dataloader)
-    action = (
-        ("validating" if (False if args is None else args["with_val"]) else "testing")
-        if args
-        else "validating"
-    )
-    desc = f"{pbar.desc[:-35]}{action:>35}" if pbar else f"{action}"
+
     bar = tqdm(
         enumerate(dataloader),
-        desc,
-        n,
-        False,
+        total=n,
         bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}",
-        position=0,
     )
 
     metric_AD_IC = metrics.AD_IC(model, img_size, percent_list=percent_list)
     metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst())
+
+    use_cuda = True
+
     for _, (images, labels) in bar:
-        # with torch.cuda.amp.autocast():
-        images, labels = images.cuda(), labels.cuda()  # type: ignore
+        if use_cuda:
+            images, labels = images.cuda(), labels.cuda()  # type: ignore
+
         images: torch.Tensor
         labels: torch.LongTensor
         logits: torch.Tensor = model(images)
 
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
-        masks = model.get_c(model_truth)
-        masks = metrics.normalizeMinMax(masks)
-        metric_AD_IC(images, chosen_logits, model_truth, masks)
-        masks = torch.nn.functional.interpolate(
-            masks,
-            size=(img_size, img_size),
-            mode="bilinear",
-            align_corners=False,
-        )
-        masks = masks.squeeze().cpu().detach().numpy()
         targets = metrics.SoftmaxSelect(model_truth)
+        masks = cam_model(input_tensor=images, targets=targets())
         metric_ROAD(images, chosen_logits, masks, targets())
+        if use_cuda:
+            masks = torch.tensor(masks).cuda().unsqueeze(dim=1)
+        else:
+            masks = torch.tensor(masks).unsqueeze(dim=1)
+        metric_AD_IC(images, chosen_logits, model_truth, masks)
 
     ADs, ICs = metric_AD_IC.get_results()
     ROADs = cast(List[float], metric_ROAD.get_results())
-    if pbar:
-        AD_IC_str = "".join(
-            f"{num_pair:>{align}}"
-            for num_pair, align in zip(
-                (f"{AD:.2f}/{IC:.2f}" for AD, IC in zip(ADs, ICs)), [12, 12, 12]
-            )
-        )
-        pbar.desc = f"{pbar.desc[:-70]}{AD_IC_str}"
+
     return [*ADs, *ICs, *ROADs]
 
 
 def get_arguments():
-    parser = argparse.ArgumentParser(description="Evaluation script")
+    parser = argparse.ArgumentParser(
+        description="Evaluation script for methods included in pytorch_grad_cam library"
+    )
     parser.add_argument(
-        "--cfg", type=str, default="default.yaml", help="config script name (not path)"
+        "--cfg", type=str, default="vit_b_16.yaml", help="config script name (not path)"
     )
     parser.add_argument("--with-val", action="store_true", help="test with val dataset")
     return parser.parse_args()
@@ -124,11 +117,10 @@ def main(args: Any):
     print(yaml.dump(args, indent=4))
     cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
     print(yaml.dump(cfg, indent=4))
+
     stats = []
-    for epoch in range(0, cfg["epochs"]):
-        args["epoch"] = epoch
-        stats.append(run(cfg, args))
-    index = [f"Epoch {i}" for i in range(cfg["epochs"])]
+    stats.append(run(cfg, args))
+
     columns = [
         "AD 100%",
         "AD 50%",
@@ -139,7 +131,7 @@ def main(args: Any):
         "ROAD AD",
         "ROAD IC",
     ]
-    data = pd.DataFrame(stats, columns=columns, index=index)
+    data = pd.DataFrame(stats, columns=columns)
     new_columns = [
         "AD 100%",
         "IC 100%",
@@ -151,7 +143,7 @@ def main(args: Any):
         "ROAD IC",
     ]
     data = data.reindex(columns=new_columns, copy=False)
-    data.to_csv("data.csv", float_format="%.2f")
+    data.to_csv("other_method_data.csv", float_format="%.2f")
 
 
 if __name__ == "__main__":
