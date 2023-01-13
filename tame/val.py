@@ -6,7 +6,7 @@ Usage:
 """
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 import pandas as pd
 
 import torch
@@ -30,7 +30,7 @@ def run(
     model: Optional[utils.Generic] = None,
     dataloader: Optional[torch.utils.data.DataLoader] = None,  # type: ignore
     pbar: Optional[tqdm] = None,
-) -> List[List[float]]:
+) -> List[float]:
     if cfg is not None:
         assert args is not None
         # Dataloader
@@ -95,7 +95,7 @@ def run(
         metric_ROAD(images, chosen_logits, masks, targets())
 
     ADs, ICs = metric_AD_IC.get_results()
-    ROADs = metric_ROAD.get_results()
+    ROADs = cast(List[float], metric_ROAD.get_results())
     if pbar:
         AD_IC_str = "".join(
             f"{num_pair:>{align}}"
@@ -104,7 +104,7 @@ def run(
             )
         )
         pbar.desc = f"{pbar.desc[:-70]}{AD_IC_str}"
-    return [ADs, ICs, ROADs]
+    return [*ADs, *ICs, *ROADs]
 
 
 def get_arguments():
@@ -128,9 +128,29 @@ def main(args: Any):
     for epoch in range(0, cfg["epochs"]):
         args["epoch"] = epoch
         stats.append(run(cfg, args))
-
-    data = pd.DataFrame(stats)
-    data.columns = ["AD", "IC", "ROAD"]  # type: ignore
+    index = [f"Epoch {i}" for i in range(cfg["epochs"])]
+    columns = [
+        "AD 100%",
+        "AD 50%",
+        "AD 15%",
+        "IC 100%",
+        "IC 50%",
+        "IC 15%",
+        "ROAD AD",
+        "ROAD IC",
+    ]
+    data = pd.DataFrame(stats, columns=columns, index=index)
+    new_columns = [
+        "AD 100%",
+        "IC 100%",
+        "AD 50%",
+        "IC 50%",
+        "AD 15%",
+        "IC 15%",
+        "ROAD AD",
+        "ROAD IC",
+    ]
+    data.reindex(columns=new_columns, copy=False)
     data.to_csv("data.csv", float_format="%.2f")
 
 

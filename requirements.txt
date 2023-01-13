@@ -11,3 +11,4 @@ pandas
 einops
 grad-cam
 timm
+typing_extensions

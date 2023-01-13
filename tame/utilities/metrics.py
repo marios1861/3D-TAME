@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 import math
-from typing import Callable, List, Tuple, Union
+from typing import Callable, List, Tuple, Union, cast
+from typing_extensions import get_args
 
 import cv2
 import numpy as np
@@ -74,13 +75,14 @@ class ROAD:
         ROADLeastRelevantFirstAverage,
         ROADCombined,
     ]
-    metric: List[AverageMeter] = field(default_factory=list)
+    metric: Union[List[AverageMeter], List[List[AverageMeter]]] = field(default_factory=list)
 
     def __post_init__(self):
         if isinstance(self.road, (List)):
             self.metric = []
+            self.metric = cast(List[List[AverageMeter]], self.metric)
             for i in range(len(self.road)):
-                self.metric.append(AverageMeter(type="avg"))
+                self.metric.append([AverageMeter(type="avg"), AverageMeter(type="avg")])
         else:
             self.metric = [AverageMeter(type="avg"), AverageMeter(type="avg")]
 
@@ -94,18 +96,24 @@ class ROAD:
     ):
 
         if isinstance(self.road, (List)):
-
-            scores = [metric(input, masks, targets, self.model) for metric in self.road]
+            self.metric = cast(List[List[AverageMeter]], self.metric)
+            scores = [metric(input, masks, targets, self.model, return_diff=False) for metric in self.road]
             for metric, score in zip(self.metric, scores):
-                metric.update(score)  # type: ignore
+                metric[0].update(get_AD(chosen_logits, torch.tensor(score).cuda()))
+                metric[1].update(get_IC(chosen_logits, torch.tensor(score).cuda()))
         else:
-            score = self.road(input, masks, targets, self.model)
+            self.metric = cast(List[AverageMeter], self.metric)
+            score = self.road(input, masks, targets, self.model, return_diff=False)  # type: ignore
             self.metric[0].update(get_AD(chosen_logits, torch.tensor(score).cuda()))
             self.metric[1].update(get_IC(chosen_logits, torch.tensor(score).cuda()))
-            # type: ignore
 
-    def get_results(self) -> List[float]:
-        return [metric() for metric in self.metric]
+    def get_results(self) -> Union[List[float], List[List[float]]]:
+        if get_args(self.metric) == List:
+            self.metric = cast(List[List[AverageMeter]], self.metric)
+            return [[metric() for metric in metrics] for metrics in self.metric]
+        else:
+            self.metric = cast(List[AverageMeter], self.metric)
+            return [metric() for metric in self.metric]
 
 
 class SoftmaxSelect:
