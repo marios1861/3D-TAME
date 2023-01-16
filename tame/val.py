@@ -113,22 +113,33 @@ def get_arguments():
         "--cfg", type=str, default="default.yaml", help="config script name (not path)"
     )
     parser.add_argument("--with-val", action="store_true", help="test with val dataset")
-    return parser.parse_args()
+    parser.add_argument(
+        "--epoch", type=int, default=None, help="Chosen epoch from validation"
+    )
+    args = vars(parser.parse_args())
+    if args.get("epoch") and args.get("with_val"):
+        parser.error(
+            "Cannot input both epoch and with-val parameters, Give input only for evaluation"
+        )
+    return args
 
 
 def main(args: Any):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
-    args = vars(args)
     print(yaml.dump(args, indent=4))
     cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
     print(yaml.dump(cfg, indent=4))
     stats = []
-    for epoch in range(0, cfg["epochs"]):
-        args["epoch"] = epoch
+    if not args.get("epoch"):
+        for epoch in range(0, cfg["epochs"]):
+            args["epoch"] = epoch
+            stats.append(run(cfg, args))
+        index = [f"Epoch {i}" for i in range(cfg["epochs"])]
+    else:
         stats.append(run(cfg, args))
-    index = [f"Epoch {i}" for i in range(cfg["epochs"])]
+        index = [f"Chosen Epoch {args['epoch']}"]
     columns = [
         "AD 100%",
         "AD 50%",
