@@ -134,39 +134,10 @@ def run(
     return [*ADs, *ICs, *ROADs]
 
 
-def get_arguments():
-    parser = argparse.ArgumentParser(
-        description="Evaluation script for methods included in pytorch_grad_cam library"
-    )
-    parser.add_argument(
-        "--cfg", type=str, default="vit_b_16.yaml", help="config script name (not path)"
-    )
-    parser.add_argument("--with-val", action="store_true", help="test with val dataset")
-    parser.add_argument(
-        "--method",
-        type=str,
-        default="GradCam",
-        help="explainability method",
-        choices=[
-            "gradcam",
-            "scorecam",
-            "gradcam++",
-            "ablationcam",
-            "xgradcam",
-            "eigencam",
-            "eigengradcam",
-            "layercam",
-            "fullgrad",
-        ],
-    )
-    return parser.parse_args()
-
-
 def main(args: Any):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
-    args = vars(args)
     print(yaml.dump(args, indent=4))
     cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
     print(yaml.dump(cfg, indent=4))
@@ -223,9 +194,4 @@ def main(args: Any):
         "ROAD IC",
     ]
     data = data.reindex(columns=new_columns)
-    data.to_csv("other_method_data.csv", float_format="%.2f")
-
-
-if __name__ == "__main__":
-    cmd_opt = get_arguments()
-    main(cmd_opt)
+    data.to_csv("evaluation data/other_method_data.csv", float_format="%.2f")

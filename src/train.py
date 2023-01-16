@@ -5,7 +5,6 @@ Usage:
     $ python -m tame.train --cfg resnet50_SGD.yaml --epoch -1
 """
 
-import argparse
 from pathlib import Path
 from typing import Any, Dict
 import warnings
@@ -147,31 +146,11 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
         utils.save_model(args["cfg"], cfg, model, optimizer, epoch)
 
 
-def get_arguments():
-    parser = argparse.ArgumentParser(description="Train script")
-    parser.add_argument(
-        "--cfg", type=str, default="default.yaml", help="config script name (not path)"
-    )
-    parser.add_argument(
-        "--epoch",
-        type=int,
-        default=None,
-        help="Epoch to load, defaults to latest epoch saved. -1 to restart training",
-    )
-    return parser.parse_args()
-
-
-def main(args: Any):
+def main(args):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(vars(args), indent=4))
     cfg = utils.load_config(ROOT_DIR / "configs" / args.cfg)
     print(yaml.dump(cfg, indent=4))
-    args = vars(args)
     train(cfg, args)
-
-
-if __name__ == "__main__":
-    cmd_args = get_arguments()
-    main(cmd_args)

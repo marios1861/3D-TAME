@@ -11,3 +11,4 @@ doodle.ipynb
 /snapshots
 /LR
 *.csv
+*.egg-info

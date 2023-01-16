@@ -112,22 +112,10 @@ def run(
     return [*ADs, *ICs, *ROADs]
 
 
-def get_arguments():
-    parser = argparse.ArgumentParser(
-        description="Evaluation script for method developed in Transformer Explainability"
-    )
-    parser.add_argument(
-        "--cfg", type=str, default="vit_b_16.yaml", help="config script name (not path)"
-    )
-    parser.add_argument("--with-val", action="store_true", help="test with val dataset")
-    return parser.parse_args()
-
-
-def main(args: Any):
+def main(args):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
-    args = vars(args)
     print(yaml.dump(args, indent=4))
     cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
     print(yaml.dump(cfg, indent=4))
@@ -157,9 +145,4 @@ def main(args: Any):
         "ROAD IC",
     ]
     data = data.reindex(columns=new_columns, copy=False)
-    data.to_csv("new_method_data.csv", float_format="%.2f")
-
-
-if __name__ == "__main__":
-    cmd_opt = get_arguments()
-    main(cmd_opt)
+    data.to_csv("evaluation data/new_method_data.csv", float_format="%.2f")

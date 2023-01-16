@@ -4,7 +4,6 @@ Evaluate an attention mechanism model on a pretrained classifier
 Usage:
     $ python -m tame.val --cfg resnet50_new.yaml --test --with-val
 """
-import argparse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 import pandas as pd
@@ -15,11 +14,10 @@ from torchvision import transforms
 from tqdm import tqdm
 from pytorch_grad_cam.metrics.road import (
     ROADMostRelevantFirst,
-    ROADLeastRelevantFirst,
 )
 
-from . import utilities as utils
-from .utilities import metrics
+import utilities as utils
+from utilities import metrics
 
 
 @torch.no_grad()
@@ -107,24 +105,7 @@ def run(
     return [*ADs, *ICs, *ROADs]
 
 
-def get_arguments():
-    parser = argparse.ArgumentParser(description="Evaluation script")
-    parser.add_argument(
-        "--cfg", type=str, default="default.yaml", help="config script name (not path)"
-    )
-    parser.add_argument("--with-val", action="store_true", help="test with val dataset")
-    parser.add_argument(
-        "--epoch", type=int, default=None, help="Chosen epoch from validation"
-    )
-    args = vars(parser.parse_args())
-    if args.get("epoch") and args.get("with_val"):
-        parser.error(
-            "Cannot input both epoch and with-val parameters, Give input only for evaluation"
-        )
-    return args
-
-
-def main(args: Any):
+def main(args):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
@@ -162,9 +143,4 @@ def main(args: Any):
         "ROAD IC",
     ]
     data = data.reindex(columns=new_columns, copy=False)
-    data.to_csv("data.csv", float_format="%.2f")
-
-
-if __name__ == "__main__":
-    cmd_opt = get_arguments()
-    main(cmd_opt)
+    data.to_csv("evaluation data/data.csv", float_format="%.2f")

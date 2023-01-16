@@ -4,7 +4,7 @@ Hacked together by / Copyright 2020 Ross Wightman
 import torch
 import torch.nn as nn
 from einops import rearrange
-from tame.transformer_explainability.modules.layers_ours import *
+from ...modules.layers_ours import *
 
 from .helpers import load_pretrained
 from .weight_init import trunc_normal_
