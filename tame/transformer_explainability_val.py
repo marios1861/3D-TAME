@@ -6,7 +6,7 @@ Usage:
 """
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Type, cast
+from typing import Any, Dict, List, cast
 import pandas as pd
 
 import torch
@@ -15,17 +15,11 @@ from torchvision import transforms
 from tqdm import tqdm
 from pytorch_grad_cam.metrics.road import (
     ROADMostRelevantFirst,
-    ROADLeastRelevantFirst,
-    ROADLeastRelevantFirstAverage,
-    ROADMostRelevantFirstAverage,
-    ROADCombined,
 )
 from .transformer_explainability.baselines.ViT.ViT_LRP import (
     vit_base_patch16_224 as vit_LRP,
 )
 from .transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
-from pytorch_grad_cam.base_cam import BaseCAM
-from pytorch_grad_cam.ablation_layer import AblationLayerVit
 
 from . import utilities as utils
 from .utilities import metrics
@@ -47,12 +41,32 @@ def run(
 ) -> List[float]:
 
     # Dataloader
+    # set batch size to 1 ***
+    cfg["batch_size"] = 1
     if args["with_val"]:
         dataloader = utils.data_loader(cfg)[1]
     else:
         dataloader = utils.data_loader(cfg)[2]
     model = vit_LRP(pretrained=True).cuda()
+    attribution_generator = LRP(model)
     model.eval()
+
+    def gen_mask(image):
+        transformer_attribution = attribution_generator.generate_LRP(
+            image.cuda(),
+            method="transformer_attribution",
+        ).detach()
+        transformer_attribution = transformer_attribution.reshape(1, 1, 14, 14)
+        transformer_attribution = torch.nn.functional.interpolate(
+            transformer_attribution, scale_factor=16, mode="bilinear"
+        )
+        transformer_attribution = (
+            transformer_attribution.reshape(1, 224, 224).cuda().data.cpu().numpy()
+        )
+        transformer_attribution = (
+            transformer_attribution - transformer_attribution.min()
+        ) / (transformer_attribution.max() - transformer_attribution.min())
+        return transformer_attribution
 
     # dig through dataloader to find input image size
     transform: transforms.Compose = dataloader.dataset.transform  # type: ignore
@@ -84,7 +98,7 @@ def run(
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
         targets = metrics.SoftmaxSelect(model_truth)
-        masks = cam_model(input_tensor=images, targets=targets())
+        masks = gen_mask(images)
         metric_ROAD(images, chosen_logits, masks, targets())
         if use_cuda:
             masks = torch.tensor(masks).cuda().unsqueeze(dim=1)
@@ -100,7 +114,7 @@ def run(
 
 def get_arguments():
     parser = argparse.ArgumentParser(
-        description="Evaluation script for methods included in pytorch_grad_cam library"
+        description="Evaluation script for method developed in Transformer Explainability"
     )
     parser.add_argument(
         "--cfg", type=str, default="vit_b_16.yaml", help="config script name (not path)"
@@ -143,7 +157,7 @@ def main(args: Any):
         "ROAD IC",
     ]
     data = data.reindex(columns=new_columns, copy=False)
-    data.to_csv("other_method_data.csv", float_format="%.2f")
+    data.to_csv("new_method_data.csv", float_format="%.2f")
 
 
 if __name__ == "__main__":

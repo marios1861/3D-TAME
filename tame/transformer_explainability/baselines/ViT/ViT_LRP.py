@@ -4,11 +4,11 @@ Hacked together by / Copyright 2020 Ross Wightman
 import torch
 import torch.nn as nn
 from einops import rearrange
-from modules.layers_ours import *
+from tame.transformer_explainability.modules.layers_ours import *
 
-from baselines.ViT.helpers import load_pretrained
-from baselines.ViT.weight_init import trunc_normal_
-from baselines.ViT.layer_helpers import to_2tuple
+from .helpers import load_pretrained
+from .weight_init import trunc_normal_
+from .layer_helpers import to_2tuple
 
 
 def _cfg(url='', **kwargs):
@@ -142,7 +142,8 @@ class Attention(nn.Module):
         attn = self.attn_drop(attn)
 
         self.save_attn(attn)
-        attn.register_hook(self.save_attn_gradients)
+        if x.requires_grad:
+            attn.register_hook(self.save_attn_gradients)
 
         out = self.matmul2([attn, v])
         out = rearrange(out, 'b h n d -> b n (h d)')
@@ -310,7 +311,8 @@ class VisionTransformer(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)
         x = self.add([x, self.pos_embed])
 
-        x.register_hook(self.save_inp_grad)
+        if x.requires_grad:
+            x.register_hook(self.save_inp_grad)
 
         for blk in self.blocks:
             x = blk(x)

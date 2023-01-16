@@ -102,7 +102,6 @@ def run(
             reshape_transform=reshape_transform,
             ablation_layer=AblationLayerVit(),  # type: ignore
         )
-        bar = enumerate(dataloader)
     else:
         cam_model = cam_method[name](
             model=model,
@@ -172,18 +171,19 @@ def main(args: Any):
     cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
     print(yaml.dump(cfg, indent=4))
     methods = {
-        # "gradcam": GradCAM,
+        "gradcam": GradCAM,
         "scorecam": ScoreCAM,
-        # "gradcam++": GradCAMPlusPlus,
-        # "ablationcam": AblationCAM,
-        # "xgradcam": XGradCAM,
-        # "eigencam": EigenCAM,
-        # "eigengradcam": EigenGradCAM,
-        # "layercam": LayerCAM,
+        "gradcam++": GradCAMPlusPlus,
+        "ablationcam": AblationCAM,
+        "xgradcam": XGradCAM,
+        "eigencam": EigenCAM,
+        "eigengradcam": EigenGradCAM,
+        "layercam": LayerCAM,
         # "fullgrad": FullGrad,
     }
     stats = []
-    if args.get("method", False):
+    index = []
+    if not args.get("method"):
         for name, method in methods.items():
             print(f"Evaluating {name} method")
             try:
@@ -191,6 +191,8 @@ def main(args: Any):
             except RuntimeError as e:
                 print(e)
                 stats.append(([], [], []))
+            index.append(name)
+
     else:
         print(f"Evaluating {args['method']} method")
         try:
@@ -198,6 +200,7 @@ def main(args: Any):
         except RuntimeError as e:
             print(e)
             stats.append(([], [], []))
+        index.append(args["method"])
     columns = [
         "AD 100%",
         "AD 50%",
@@ -208,7 +211,7 @@ def main(args: Any):
         "ROAD AD",
         "ROAD IC",
     ]
-    data = pd.DataFrame(stats, columns=columns)
+    data = pd.DataFrame(stats, columns=columns, index=index)
     new_columns = [
         "AD 100%",
         "IC 100%",
@@ -219,7 +222,7 @@ def main(args: Any):
         "ROAD AD",
         "ROAD IC",
     ]
-    data = data.reindex(columns=new_columns, copy=False)
+    data = data.reindex(columns=new_columns)
     data.to_csv("other_method_data.csv", float_format="%.2f")
 
 
