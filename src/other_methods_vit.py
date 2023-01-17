@@ -43,17 +43,13 @@ def reshape_transform(tensor, height=14, width=14):
 
 def run(
     cfg: Dict[str, Any],
-    args: Dict[str, Any],
     cam_method: Dict[str, Type[BaseCAM]],
     name: str,
     percent_list: List[float] = [0.0, 0.5, 0.85],
 ) -> Tuple[List[float], List[float]]:
 
     # Dataloader
-    if args["with_val"]:
-        dataloader = utils.data_loader(cfg)[1]
-    else:
-        dataloader = utils.data_loader(cfg)[2]
+    dataloader = utils.data_loader(cfg)[2]
     model = torch.hub.load(
         "facebookresearch/deit:main", "deit_tiny_patch16_224", pretrained=True
     )
@@ -119,7 +115,6 @@ def run(
         else:
             masks = torch.tensor(masks).unsqueeze(dim=1)
         metric_AD_IC(images, chosen_logits, model_truth, masks)
-        break
 
     ADs, ICs = metric_AD_IC.get_results()
     ROADs = metric_ROAD.get_results()
@@ -132,7 +127,7 @@ def main(args: Any):
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
+    cfg = utils.load_config(ROOT_DIR / "configs" / f'{args["cfg"]}.yaml')
     print(yaml.dump(cfg, indent=4))
     methods = {
         "gradcam": GradCAM,
@@ -152,7 +147,7 @@ def main(args: Any):
         for name, method in methods.items():
             print(f"Evaluating {name} method")
             try:
-                stat, data = run(cfg, args, methods, name)
+                stat, data = run(cfg, methods, name)
                 stats.append(stat)
                 road_data.append(data)
             except RuntimeError as e:
@@ -163,7 +158,7 @@ def main(args: Any):
         index = args["method"]
         print(f"Evaluating {args['method']} method")
         try:
-            stat, data = run(cfg, args, methods, args["method"])
+            stat, data = run(cfg, methods, args["method"])
             stats.append(stat)
             road_data.append(data)
         except RuntimeError as e:

@@ -67,7 +67,7 @@ class ROAD:
         Type[ROADLeastRelevantFirst],
     ]
     percent_list: List[int] = field(
-        default_factory=lambda: [10, 20, 30, 40, 50, 70, 90]
+        default_factory=lambda: [100 - pct for pct in [10, 20, 30, 40, 50, 70, 90]]
     )
 
     def __post_init__(self):

@@ -35,17 +35,13 @@ def reshape_transform(tensor, height=14, width=14):
 
 def run(
     cfg: Dict[str, Any],
-    args: Dict[str, Any],
     percent_list: List[float] = [0.0, 0.5, 0.85],
 ) -> Tuple[List[float], List[float]]:
 
     # Dataloader
     # set batch size to 1 ***
     cfg["batch_size"] = 1
-    if args["with_val"]:
-        dataloader = utils.data_loader(cfg)[1]
-    else:
-        dataloader = utils.data_loader(cfg)[2]
+    dataloader = utils.data_loader(cfg)[2]
     model = vit_LRP(pretrained=True).cuda()
     attribution_generator = LRP(model)
     model.eval()
@@ -115,15 +111,15 @@ def main(args):
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
+    cfg = utils.load_config(ROOT_DIR / "configs" / f'{args["cfg"]}.yaml')
     print(yaml.dump(cfg, indent=4))
 
     stats = []
     road_data = []
-    stat, data = run(cfg, args)
-    stats.append(run(cfg, args))
+    stat, data = run(cfg)
+    stats.append(stat)
     road_data.append(data)
-    
+
     columns = [
         "AD 100%",
         "AD 50%",
@@ -131,8 +127,6 @@ def main(args):
         "IC 100%",
         "IC 50%",
         "IC 15%",
-        "ROAD AD",
-        "ROAD IC",
     ]
     data = pd.DataFrame(stats, columns=columns)
     new_columns = [
@@ -142,12 +136,8 @@ def main(args):
         "IC 50%",
         "AD 15%",
         "IC 15%",
-        "ROAD AD",
-        "ROAD IC",
     ]
     data = data.reindex(columns=new_columns, copy=False)
     data.to_csv("evaluation data/new_method_data.csv", float_format="%.2f")
-    road_data = pd.DataFrame(
-        road_data, columns=[10, 20, 30, 40, 50, 70, 90]
-    )
+    road_data = pd.DataFrame(road_data, columns=[10, 20, 30, 40, 50, 70, 90])
     road_data.to_csv("evaluation data/hila_road_data.csv", float_format="%.2f")

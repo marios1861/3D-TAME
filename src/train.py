@@ -32,9 +32,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
     # Attempt to reload
     if args["epoch"] != -1:
         # load the latest epoch, or the epoch supplied by args
-        last_epoch = utils.load_model(
-            args["cfg"], cfg, model, optimizer, args["epoch"]
-        )
+        last_epoch = utils.load_model(args["cfg"], cfg, model, optimizer, args["epoch"])
     else:
         last_epoch = 0
 
@@ -71,7 +69,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
         )
         # Batch loop
         for i, (images, labels) in pbar:
-            images, labels = images.cuda(), labels.cuda()    # type: ignore
+            images, labels = images.cuda(), labels.cuda()  # type: ignore
             images: torch.Tensor
             labels: torch.LongTensor
 
@@ -150,7 +148,7 @@ def main(args):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
-    print(yaml.dump(vars(args), indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs" / args.cfg)
+    print(yaml.dump(args, indent=4))
+    cfg = utils.load_config(ROOT_DIR / "configs" / f'{args["cfg"]}.yaml')
     print(yaml.dump(cfg, indent=4))
     train(cfg, args)

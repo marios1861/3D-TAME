@@ -110,7 +110,7 @@ def main(args):
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
+    cfg = utils.load_config(ROOT_DIR / "configs" / f'{args["cfg"]}.yaml')
     print(yaml.dump(cfg, indent=4))
     stats = []
     road_data = []
