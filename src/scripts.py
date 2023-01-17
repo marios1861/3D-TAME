@@ -24,13 +24,14 @@ def parse_val(parser: argparse.ArgumentParser):
     parser.set_defaults(func=val.main)
 
 
-def parse_other(parser: argparse.ArgumentParser):
+def parse_other(parser: argparse.ArgumentParser, general_parser: argparse.ArgumentParser):
     parser.add_argument("--with-val", action="store_true", help="test with val dataset")
     subparsers = parser.add_subparsers()
 
     grad_parser = subparsers.add_parser(
         "grad",
         description="Evaluation script for methods included in pytorch_grad_cam library",
+        parents=[general_parser]
     )
     grad_parser.add_argument(
         "--method",
@@ -54,30 +55,33 @@ def parse_other(parser: argparse.ArgumentParser):
     hila_parser = subparsers.add_parser(
         "hila",
         description="Evaluation script for method developed in Transformer Explainability",
+        parents=[general_parser]
     )
     hila_parser.set_defaults(func=hila.main)
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="TAME")
-    parser.add_argument(
+    general_parser = argparse.ArgumentParser(add_help=False)
+    general_parser.add_argument(
         "--cfg", type=str, default="default.yaml", help="config script name (not path)"
     )
+    parser = argparse.ArgumentParser(prog="TAME", parents=[general_parser])
     subparsers = parser.add_subparsers()
 
     # create the parser for the train command
-    train_parser = subparsers.add_parser("train", description="Train script for TAME")
+    train_parser = subparsers.add_parser("train", description="Train script for TAME", parents=[general_parser])
     parse_train(train_parser)
 
     # create the parser for the val command
-    val_parser = subparsers.add_parser("val", description="Eval script for TAME")
+    val_parser = subparsers.add_parser("val", description="Eval script for TAME", parents=[general_parser])
     parse_val(val_parser)
 
     # other methods
     other_parser = subparsers.add_parser(
-        "other-val", description="Eval script for other methods"
+        "other-val", description="Eval script for other methods",
+        parents=[general_parser]
     )
-    parse_other(other_parser)
+    parse_other(other_parser, general_parser)
 
     args = parser.parse_args()
     args.func(vars(args))

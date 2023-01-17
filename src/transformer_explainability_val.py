@@ -4,9 +4,8 @@ Evaluate other explainability methods on a pretrained classifier
 Usage:
     $ python -m tame.val --cfg resnet50_new.yaml --test --with-val
 """
-import argparse
 from pathlib import Path
-from typing import Any, Dict, List, cast
+from typing import Any, Dict, List, Tuple
 import pandas as pd
 
 import torch
@@ -16,13 +15,13 @@ from tqdm import tqdm
 from pytorch_grad_cam.metrics.road import (
     ROADMostRelevantFirst,
 )
-from .transformer_explainability.baselines.ViT.ViT_LRP import (
+from transformer_explainability.baselines.ViT.ViT_LRP import (
     vit_base_patch16_224 as vit_LRP,
 )
-from .transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
+from transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
 
-from . import utilities as utils
-from .utilities import metrics
+import utilities as utils
+from utilities import metrics
 
 
 def reshape_transform(tensor, height=14, width=14):
@@ -38,7 +37,7 @@ def run(
     cfg: Dict[str, Any],
     args: Dict[str, Any],
     percent_list: List[float] = [0.0, 0.5, 0.85],
-) -> List[float]:
+) -> Tuple[List[float], List[float]]:
 
     # Dataloader
     # set batch size to 1 ***
@@ -83,7 +82,7 @@ def run(
     )
 
     metric_AD_IC = metrics.AD_IC(model, img_size, percent_list=percent_list)
-    metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst())
+    metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst)
 
     use_cuda = True
 
@@ -97,9 +96,8 @@ def run(
 
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
-        targets = metrics.SoftmaxSelect(model_truth)
         masks = gen_mask(images)
-        metric_ROAD(images, chosen_logits, masks, targets())
+        metric_ROAD(images, model_truth, masks)
         if use_cuda:
             masks = torch.tensor(masks).cuda().unsqueeze(dim=1)
         else:
@@ -107,9 +105,9 @@ def run(
         metric_AD_IC(images, chosen_logits, model_truth, masks)
 
     ADs, ICs = metric_AD_IC.get_results()
-    ROADs = cast(List[float], metric_ROAD.get_results())
+    ROADs = metric_ROAD.get_results()
 
-    return [*ADs, *ICs, *ROADs]
+    return [*ADs, *ICs], ROADs
 
 
 def main(args):
@@ -121,8 +119,11 @@ def main(args):
     print(yaml.dump(cfg, indent=4))
 
     stats = []
+    road_data = []
+    stat, data = run(cfg, args)
     stats.append(run(cfg, args))
-
+    road_data.append(data)
+    
     columns = [
         "AD 100%",
         "AD 50%",
@@ -146,3 +147,7 @@ def main(args):
     ]
     data = data.reindex(columns=new_columns, copy=False)
     data.to_csv("evaluation data/new_method_data.csv", float_format="%.2f")
+    road_data = pd.DataFrame(
+        road_data, columns=[10, 20, 30, 40, 50, 70, 90]
+    )
+    road_data.to_csv("evaluation data/hila_road_data.csv", float_format="%.2f")

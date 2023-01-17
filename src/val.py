@@ -5,7 +5,7 @@ Usage:
     $ python -m tame.val --cfg resnet50_new.yaml --test --with-val
 """
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 import torch
@@ -28,7 +28,7 @@ def run(
     model: Optional[utils.Generic] = None,
     dataloader: Optional[torch.utils.data.DataLoader] = None,  # type: ignore
     pbar: Optional[tqdm] = None,
-) -> List[float]:
+) -> Tuple[List[float], List[float]]:
     if cfg is not None:
         assert args is not None
         # Dataloader
@@ -69,7 +69,7 @@ def run(
     )
 
     metric_AD_IC = metrics.AD_IC(model, img_size, percent_list=percent_list)
-    metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst())
+    metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst)
     for _, (images, labels) in bar:
         # with torch.cuda.amp.autocast():
         images, labels = images.cuda(), labels.cuda()  # type: ignore
@@ -89,11 +89,10 @@ def run(
             align_corners=False,
         )
         masks = masks.squeeze().cpu().detach().numpy()
-        targets = metrics.SoftmaxSelect(model_truth)
-        metric_ROAD(images, chosen_logits, masks, targets())
+        metric_ROAD(images, model_truth, masks)
 
     ADs, ICs = metric_AD_IC.get_results()
-    ROADs = cast(List[float], metric_ROAD.get_results())
+    ROADs = metric_ROAD.get_results()
     if pbar:
         AD_IC_str = "".join(
             f"{num_pair:>{align}}"
@@ -102,7 +101,8 @@ def run(
             )
         )
         pbar.desc = f"{pbar.desc[:-70]}{AD_IC_str}"
-    return [*ADs, *ICs, *ROADs]
+
+    return [*ADs, *ICs], ROADs
 
 
 def main(args):
@@ -113,13 +113,18 @@ def main(args):
     cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
     print(yaml.dump(cfg, indent=4))
     stats = []
+    road_data = []
     if not args.get("epoch"):
         for epoch in range(0, cfg["epochs"]):
             args["epoch"] = epoch
-            stats.append(run(cfg, args))
+            stat, data = run(cfg, args)
+            stats.append(stat)
+            road_data.append(data)
         index = [f"Epoch {i}" for i in range(cfg["epochs"])]
     else:
-        stats.append(run(cfg, args))
+        stat, data = run(cfg, args)
+        stats.append(stat)
+        road_data.append(data)
         index = [f"Chosen Epoch {args['epoch']}"]
     columns = [
         "AD 100%",
@@ -128,8 +133,6 @@ def main(args):
         "IC 100%",
         "IC 50%",
         "IC 15%",
-        "ROAD AD",
-        "ROAD IC",
     ]
     data = pd.DataFrame(stats, columns=columns, index=index)
     new_columns = [
@@ -139,8 +142,10 @@ def main(args):
         "IC 50%",
         "AD 15%",
         "IC 15%",
-        "ROAD AD",
-        "ROAD IC",
     ]
     data = data.reindex(columns=new_columns, copy=False)
     data.to_csv("evaluation data/data.csv", float_format="%.2f")
+    road_data = pd.DataFrame(
+        road_data, index=index, columns=[10, 20, 30, 40, 50, 70, 90]
+    )
+    road_data.to_csv("evaluation data/tame_road_data.csv", float_format="%.2f")

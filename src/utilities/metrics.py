@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 import math
-from typing import Callable, List, Tuple, Union, cast
-from typing_extensions import get_args
+from typing import List, Tuple, Union, Type
 
 import cv2
 import numpy as np
@@ -12,11 +11,8 @@ from torch.nn import functional as F
 from pytorch_grad_cam.metrics.road import (
     ROADMostRelevantFirst,
     ROADLeastRelevantFirst,
-    ROADLeastRelevantFirstAverage,
-    ROADMostRelevantFirstAverage,
-    ROADCombined,
 )
-
+from pytorch_grad_cam.utils.model_targets import RawScoresOutputTarget
 from .avg_meter import AverageMeter
 
 
@@ -67,71 +63,40 @@ class AD_IC:
 class ROAD:
     model: torch.nn.Module
     road: Union[
-        List[ROADMostRelevantFirst],
-        List[ROADLeastRelevantFirst],
-        ROADMostRelevantFirst,
-        ROADLeastRelevantFirst,
-        ROADMostRelevantFirstAverage,
-        ROADLeastRelevantFirstAverage,
-        ROADCombined,
+        Type[ROADMostRelevantFirst],
+        Type[ROADLeastRelevantFirst],
     ]
-    metric: Union[List[AverageMeter], List[List[AverageMeter]]] = field(default_factory=list)
+    percent_list: List[int] = field(
+        default_factory=lambda: [10, 20, 30, 40, 50, 70, 90]
+    )
 
     def __post_init__(self):
-        if isinstance(self.road, (List)):
-            self.metric = []
-            self.metric = cast(List[List[AverageMeter]], self.metric)
-            for i in range(len(self.road)):
-                self.metric.append([AverageMeter(type="avg"), AverageMeter(type="avg")])
-        else:
-            self.metric = [AverageMeter(type="avg"), AverageMeter(type="avg")]
+        self.target = [RawScoresOutputTarget() for _ in range(32)]
+        self.metric: List[AverageMeter] = []
+        self.roads: List[Union[ROADMostRelevantFirst, ROADLeastRelevantFirst]] = []
+        for percentile in self.percent_list:
+            self.metric.append(AverageMeter(type="avg"))
+            self.roads.append(self.road(percentile))
 
     @torch.no_grad()
     def __call__(
         self,
         input: torch.Tensor,
-        chosen_logits: torch.Tensor,
+        model_truth: torch.Tensor,
         masks: np.ndarray,
-        targets: List[Callable],
     ):
+        for i in range(len(self.percent_list)):
+            scores = self.roads[i](
+                input, masks, self.target, self.model, return_diff=False  # type: ignore
+            )
+            self._updateAcc(model_truth.cpu(), torch.tensor(scores), i)
 
-        if isinstance(self.road, (List)):
-            self.metric = cast(List[List[AverageMeter]], self.metric)
-            scores = [metric(input, masks, targets, self.model, return_diff=False) for metric in self.road]
-            for metric, score in zip(self.metric, scores):
-                metric[0].update(get_AD(chosen_logits, torch.tensor(score).to(chosen_logits.device)))
-                metric[1].update(get_IC(chosen_logits, torch.tensor(score).to(chosen_logits.device)))
-        else:
-            self.metric = cast(List[AverageMeter], self.metric)
-            score = self.road(input, masks, targets, self.model, return_diff=False)  # type: ignore
-            self.metric[0].update(get_AD(chosen_logits, torch.tensor(score).to(chosen_logits.device)))
-            self.metric[1].update(get_IC(chosen_logits, torch.tensor(score).to(chosen_logits.device)))
+    def _updateAcc(self, preds: torch.Tensor, scores: torch.Tensor, i: int):
+        _, new_preds = scores.max(dim=1)
+        self.metric[i].update(((preds == new_preds).sum() / preds.shape[0]).item())
 
-    def get_results(self) -> Union[List[float], List[List[float]]]:
-        if get_args(self.metric) == List:
-            self.metric = cast(List[List[AverageMeter]], self.metric)
-            return [[metric() for metric in metrics] for metrics in self.metric]
-        else:
-            self.metric = cast(List[AverageMeter], self.metric)
-            return [metric() for metric in self.metric]
-
-
-class SoftmaxSelect:
-    def __init__(self, model_truth):
-        self.model_truth = model_truth
-
-    class SingleSelect:
-        def __init__(self, label):
-            self.label = label
-
-        def __call__(self, single_output):
-            return single_output.softmax(dim=-1)[self.label]
-
-    def __call__(self):
-        callables = []
-        for label in self.model_truth:
-            callables.append(self.SingleSelect(label))
-        return callables
+    def get_results(self) -> List[float]:
+        return [metric() for metric in self.metric]
 
 
 def drop_Npercent(cam_map, percent):

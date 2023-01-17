@@ -75,14 +75,8 @@ def main(args):
     FILE = Path(__file__).resolve()
     ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
-    args = vars(args)
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs", args["cfg"])
+    cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
     print(yaml.dump(cfg, indent=4))
     train_list = ROOT_DIR / "datalist" / "ILSVRC" / f"{cfg['model']}_train.txt"
     run(cfg, train_list)
-
-
-if __name__ == "__main__":
-    cmd_opt = get_arguments()
-    main(cmd_opt)

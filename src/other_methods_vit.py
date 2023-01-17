@@ -4,9 +4,8 @@ Evaluate other explainability methods on a pretrained classifier
 Usage:
     $ python -m tame.val --cfg resnet50_new.yaml --test --with-val
 """
-import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Type, cast
+from typing import Any, Dict, List, Tuple, Type
 import pandas as pd
 
 import torch
@@ -15,10 +14,6 @@ from torchvision import transforms
 from tqdm import tqdm
 from pytorch_grad_cam.metrics.road import (
     ROADMostRelevantFirst,
-    ROADLeastRelevantFirst,
-    ROADLeastRelevantFirstAverage,
-    ROADMostRelevantFirstAverage,
-    ROADCombined,
 )
 from pytorch_grad_cam import (
     GradCAM,
@@ -29,13 +24,12 @@ from pytorch_grad_cam import (
     EigenCAM,
     EigenGradCAM,
     LayerCAM,
-    FullGrad,
 )
 from pytorch_grad_cam.base_cam import BaseCAM
 from pytorch_grad_cam.ablation_layer import AblationLayerVit
 
-from . import utilities as utils
-from .utilities import metrics
+import utilities as utils
+from utilities import metrics
 
 
 def reshape_transform(tensor, height=14, width=14):
@@ -53,7 +47,7 @@ def run(
     cam_method: Dict[str, Type[BaseCAM]],
     name: str,
     percent_list: List[float] = [0.0, 0.5, 0.85],
-) -> List[float]:
+) -> Tuple[List[float], List[float]]:
 
     # Dataloader
     if args["with_val"]:
@@ -80,8 +74,7 @@ def run(
     )
 
     metric_AD_IC = metrics.AD_IC(model, img_size, percent_list=percent_list)
-    metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst())
-
+    metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst)
     if "vit" in cfg["model"]:
         target_layers = [model.blocks[-1].norm1]  # type: ignore
     elif "resnet" in cfg["model"]:
@@ -119,19 +112,19 @@ def run(
 
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
-        targets = metrics.SoftmaxSelect(model_truth)
-        masks = cam_model(input_tensor=images, targets=targets())
-        metric_ROAD(images, chosen_logits, masks, targets())
+        masks = cam_model(input_tensor=images)  # type: ignore
+        metric_ROAD(images, model_truth, masks)
         if use_cuda:
             masks = torch.tensor(masks).cuda().unsqueeze(dim=1)
         else:
             masks = torch.tensor(masks).unsqueeze(dim=1)
         metric_AD_IC(images, chosen_logits, model_truth, masks)
+        break
 
     ADs, ICs = metric_AD_IC.get_results()
-    ROADs = cast(List[float], metric_ROAD.get_results())
+    ROADs = metric_ROAD.get_results()
 
-    return [*ADs, *ICs, *ROADs]
+    return [*ADs, *ICs], ROADs
 
 
 def main(args: Any):
@@ -152,26 +145,30 @@ def main(args: Any):
         "layercam": LayerCAM,
         # "fullgrad": FullGrad,
     }
-    stats = []
-    index = []
+    stats: List[List[float]] = []
+    road_data = []
     if not args.get("method"):
+        index = list(methods.keys())
         for name, method in methods.items():
             print(f"Evaluating {name} method")
             try:
-                stats.append(run(cfg, args, methods, name))
+                stat, data = run(cfg, args, methods, name)
+                stats.append(stat)
+                road_data.append(data)
             except RuntimeError as e:
                 print(e)
-                stats.append(([], [], []))
-            index.append(name)
+                stats.append([])
 
     else:
+        index = args["method"]
         print(f"Evaluating {args['method']} method")
         try:
-            stats.append(run(cfg, args, methods, args["method"]))
+            stat, data = run(cfg, args, methods, args["method"])
+            stats.append(stat)
+            road_data.append(data)
         except RuntimeError as e:
             print(e)
-            stats.append(([], [], []))
-        index.append(args["method"])
+            stats.append([])
     columns = [
         "AD 100%",
         "AD 50%",
@@ -179,8 +176,6 @@ def main(args: Any):
         "IC 100%",
         "IC 50%",
         "IC 15%",
-        "ROAD AD",
-        "ROAD IC",
     ]
     data = pd.DataFrame(stats, columns=columns, index=index)
     new_columns = [
@@ -190,8 +185,10 @@ def main(args: Any):
         "IC 50%",
         "AD 15%",
         "IC 15%",
-        "ROAD AD",
-        "ROAD IC",
     ]
     data = data.reindex(columns=new_columns)
     data.to_csv("evaluation data/other_method_data.csv", float_format="%.2f")
+    road_data = pd.DataFrame(
+        road_data, index=index, columns=[10, 20, 30, 40, 50, 70, 90]
+    )
+    road_data.to_csv("evaluation data/other_road_data.csv", float_format="%.2f")
