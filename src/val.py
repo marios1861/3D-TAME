@@ -4,19 +4,19 @@ Evaluate an attention mechanism model on a pretrained classifier
 Usage:
     $ python -m tame.val --cfg resnet50_new.yaml --test --with-val
 """
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-import pandas as pd
 
+import pandas as pd
 import torch
 import yaml
+from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 from torchvision import transforms
 from tqdm import tqdm
-from pytorch_grad_cam.metrics.road import (
-    ROADMostRelevantFirst,
-)
 
 import utilities as utils
+from masked_print import save_heatmap
 from utilities import metrics
 
 
@@ -28,6 +28,7 @@ def run(
     model: Optional[utils.Generic] = None,
     dataloader: Optional[torch.utils.data.DataLoader] = None,  # type: ignore
     pbar: Optional[tqdm] = None,
+    example_gen: Optional[int] = None,
 ) -> Tuple[List[float], List[float]]:
     if cfg is not None:
         assert args is not None
@@ -67,14 +68,36 @@ def run(
         bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}",
         position=0,
     )
+    if example_gen is not None:
+        image, _ = dataloader.dataset[example_gen]
+        image = image.unsqueeze(0)
+        logits: torch.Tensor = model.cpu()(image)
+        logits = logits.softmax(dim=1)
+        chosen_logits, model_truth = logits.max(dim=1)
+        mask = model.get_c(model_truth)
+        mask = metrics.normalizeMinMax(mask)
+        mask = torch.nn.functional.interpolate(
+            mask,
+            size=(img_size, img_size),
+            mode="bilinear",
+            align_corners=False,
+        ).squeeze(0)
+        image = image.squeeze()
+        save_heatmap(
+            mask,
+            image,
+            Path("evaluation data")
+            / "examples"
+            / f"val_{example_gen}_{datetime.now().time().strftime('%H-%M-%S')}.jpg",
+        )
+        quit()
 
     metric_AD_IC = metrics.AD_IC(model, img_size, percent_list=percent_list)
     metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst)
-    for _, (images, labels) in bar:
+    for _, (images, _) in bar:
         # with torch.cuda.amp.autocast():
-        images, labels = images.cuda(), labels.cuda()  # type: ignore
+        images, _ = images.cuda()  # type: ignore
         images: torch.Tensor
-        labels: torch.LongTensor
         logits: torch.Tensor = model(images)
 
         logits = logits.softmax(dim=1)
@@ -106,23 +129,22 @@ def run(
 
 
 def main(args):
-    FILE = Path(__file__).resolve()
-    ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs" / f'{args["cfg"]}.yaml')
+    cfg = utils.load_config(args["cfg"])
     print(yaml.dump(cfg, indent=4))
+
     stats = []
     road_data = []
     if not args.get("epoch"):
         for epoch in range(0, cfg["epochs"]):
             args["epoch"] = epoch
-            stat, data = run(cfg, args)
+            stat, data = run(cfg, args, example_gen=args["example_gen"])
             stats.append(stat)
             road_data.append(data)
         index = [f"Epoch {i}" for i in range(cfg["epochs"])]
     else:
-        stat, data = run(cfg, args)
+        stat, data = run(cfg, args, example_gen=args["example_gen"])
         stats.append(stat)
         road_data.append(data)
         index = [f"Chosen Epoch {args['epoch']}"]

@@ -82,12 +82,17 @@ def main():
     )
     parse_train(train_parser)
 
+    eval_parser = argparse.ArgumentParser(add_help=False, parents=[general_parser])
+    eval_parser.add_argument(
+        "-e", "--example_gen", type=int, help="config script to use (not path)"
+    )
+
     # create the parser for the val command
     val_parser = subparsers.add_parser(
         "val",
         help="tame evaluation subcommand",
         description="Eval script for TAME",
-        parents=[general_parser],
+        parents=[eval_parser],
     )
     parse_val(val_parser)
 
@@ -96,9 +101,9 @@ def main():
         "other-val",
         help="evaluation for other methods subcommand",
         description="Eval script for other methods",
-        parents=[general_parser],
+        parents=[eval_parser],
     )
-    parse_other(other_parser, general_parser)
+    parse_other(other_parser, eval_parser)
 
     args = parser.parse_args()
     args.func(vars(args))

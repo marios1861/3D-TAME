@@ -5,22 +5,21 @@ Usage:
     $ python -m tame.val --cfg resnet50_new.yaml --test --with-val
 """
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-import pandas as pd
+from typing import Any, Dict, List, Optional, Tuple
 
+import pandas as pd
 import torch
 import yaml
+from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 from torchvision import transforms
 from tqdm import tqdm
-from pytorch_grad_cam.metrics.road import (
-    ROADMostRelevantFirst,
-)
+
+import utilities as utils
+from masked_print import save_heatmap
+from transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
 from transformer_explainability.baselines.ViT.ViT_LRP import (
     vit_base_patch16_224 as vit_LRP,
 )
-from transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
-
-import utilities as utils
 from utilities import metrics
 
 
@@ -36,6 +35,7 @@ def reshape_transform(tensor, height=14, width=14):
 def run(
     cfg: Dict[str, Any],
     percent_list: List[float] = [0.0, 0.5, 0.85],
+    example_gen: Optional[int] = None,
 ) -> Tuple[List[float], List[float]]:
 
     # Dataloader
@@ -82,6 +82,18 @@ def run(
 
     use_cuda = True
 
+    if example_gen is not None:
+        image, _ = dataloader.dataset[example_gen]
+        image = image.unsqueeze(0)
+        mask = torch.tensor(gen_mask(image))
+        image = image.squeeze()
+        save_heatmap(
+            mask,
+            image,
+            Path("evaluation data") / "examples" / f"hila_{example_gen}.jpg",
+        )
+        quit()
+
     for _, (images, labels) in bar:
         if use_cuda:
             images, labels = images.cuda(), labels.cuda()  # type: ignore
@@ -98,6 +110,12 @@ def run(
             masks = torch.tensor(masks).cuda().unsqueeze(dim=1)
         else:
             masks = torch.tensor(masks).unsqueeze(dim=1)
+        save_heatmap(
+            masks[0, :, :],
+            images[0, :, :, :],
+            Path("evaluation data") / "examples" / "hila.jpg",
+        )
+        quit()
         metric_AD_IC(images, chosen_logits, model_truth, masks)
 
     ADs, ICs = metric_AD_IC.get_results()
@@ -107,16 +125,14 @@ def run(
 
 
 def main(args):
-    FILE = Path(__file__).resolve()
-    ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs" / f'{args["cfg"]}.yaml')
+    cfg = utils.load_config(args["cfg"])
     print(yaml.dump(cfg, indent=4))
 
     stats = []
     road_data = []
-    stat, data = run(cfg)
+    stat, data = run(cfg, example_gen=args["example_gen"])
     stats.append(stat)
     road_data.append(data)
 

@@ -5,30 +5,29 @@ Usage:
     $ python -m tame.val --cfg resnet50_new.yaml --test --with-val
 """
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Type
-import pandas as pd
+from typing import Any, Dict, List, Optional, Tuple, Type
 
+import pandas as pd
 import torch
 import yaml
-from torchvision import transforms
-from tqdm import tqdm
-from pytorch_grad_cam.metrics.road import (
-    ROADMostRelevantFirst,
-)
 from pytorch_grad_cam import (
-    GradCAM,
-    ScoreCAM,
-    GradCAMPlusPlus,
     AblationCAM,
-    XGradCAM,
     EigenCAM,
     EigenGradCAM,
+    GradCAM,
+    GradCAMPlusPlus,
     LayerCAM,
+    ScoreCAM,
+    XGradCAM,
 )
-from pytorch_grad_cam.base_cam import BaseCAM
 from pytorch_grad_cam.ablation_layer import AblationLayerVit
+from pytorch_grad_cam.base_cam import BaseCAM
+from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
+from torchvision import transforms
+from tqdm import tqdm
 
 import utilities as utils
+from masked_print import save_heatmap
 from utilities import metrics
 
 
@@ -46,6 +45,7 @@ def run(
     cam_method: Dict[str, Type[BaseCAM]],
     name: str,
     percent_list: List[float] = [0.0, 0.5, 0.85],
+    example_gen: Optional[int] = None,
 ) -> Tuple[List[float], List[float]]:
 
     # Dataloader
@@ -98,6 +98,19 @@ def run(
             reshape_transform=reshape_transform,
             use_cuda=use_cuda,
         )
+
+    if example_gen is not None:
+        image, _ = dataloader.dataset[example_gen]
+        image = image.unsqueeze(0)
+        mask = torch.tensor(cam_model(input_tensor=image))
+        image = image.squeeze()
+        save_heatmap(
+            mask,
+            image,
+            Path("evaluation data") / "examples" / f"grad_{name}_{example_gen}.jpg",
+        )
+        quit()
+
     for _, (images, labels) in bar:
         if use_cuda:
             images, labels = images.cuda(), labels.cuda()  # type: ignore
@@ -114,6 +127,7 @@ def run(
             masks = torch.tensor(masks).cuda().unsqueeze(dim=1)
         else:
             masks = torch.tensor(masks).unsqueeze(dim=1)
+
         metric_AD_IC(images, chosen_logits, model_truth, masks)
 
     ADs, ICs = metric_AD_IC.get_results()
@@ -123,12 +137,11 @@ def run(
 
 
 def main(args: Any):
-    FILE = Path(__file__).resolve()
-    ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs" / f'{args["cfg"]}.yaml')
+    cfg = utils.load_config(args["cfg"])
     print(yaml.dump(cfg, indent=4))
+
     methods = {
         "gradcam": GradCAM,
         "scorecam": ScoreCAM,
@@ -140,6 +153,7 @@ def main(args: Any):
         "layercam": LayerCAM,
         # "fullgrad": FullGrad,
     }
+
     stats: List[List[float]] = []
     road_data = []
     if not args.get("method"):
@@ -147,7 +161,7 @@ def main(args: Any):
         for name, method in methods.items():
             print(f"Evaluating {name} method")
             try:
-                stat, data = run(cfg, methods, name)
+                stat, data = run(cfg, methods, name, example_gen=args["example_gen"])
                 stats.append(stat)
                 road_data.append(data)
             except RuntimeError as e:
@@ -158,7 +172,9 @@ def main(args: Any):
         index = args["method"]
         print(f"Evaluating {args['method']} method")
         try:
-            stat, data = run(cfg, methods, args["method"])
+            stat, data = run(
+                cfg, methods, args["method"], example_gen=args["example_gen"]
+            )
             stats.append(stat)
             road_data.append(data)
         except RuntimeError as e:
