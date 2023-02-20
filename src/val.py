@@ -59,7 +59,7 @@ def run(
         if args
         else "validating"
     )
-    desc = f"{pbar.desc[:-35]}{action:>35}" if pbar else f"{action}"
+    desc = f"{pbar.desc[:-36]}{action:>36}" if pbar else f"{action}"
     bar = tqdm(
         enumerate(dataloader),
         desc,
@@ -96,7 +96,7 @@ def run(
     metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst)
     for _, (images, _) in bar:
         # with torch.cuda.amp.autocast():
-        images, _ = images.cuda()  # type: ignore
+        images = images.cuda()  # type: ignore
         images: torch.Tensor
         logits: torch.Tensor = model(images)
 
@@ -117,13 +117,9 @@ def run(
     ADs, ICs = metric_AD_IC.get_results()
     ROADs = metric_ROAD.get_results()
     if pbar:
-        AD_IC_str = "".join(
-            f"{num_pair:>{align}}"
-            for num_pair, align in zip(
-                (f"{AD:.2f}/{IC:.2f}" for AD, IC in zip(ADs, ICs)), [12, 12, 12]
-            )
-        )
-        pbar.desc = f"{pbar.desc[:-70]}{AD_IC_str}"
+        adic = f"{ADs[0]:.2f}/{ICs[0]:.2f}"
+        roads = f"{ROADs[0]:.2f}/{ROADs[1]:.2f}"
+        pbar.desc = f"{pbar.desc[:-36]}{adic:>20}{roads:>16}"
 
     return [*ADs, *ICs], ROADs
 
@@ -134,19 +130,19 @@ def main(args):
     cfg = utils.load_config(args["cfg"])
     print(yaml.dump(cfg, indent=4))
 
-    stats = []
+    adic_data = []
     road_data = []
     if not args.get("epoch"):
         for epoch in range(0, cfg["epochs"]):
             args["epoch"] = epoch
-            stat, data = run(cfg, args, example_gen=args["example_gen"])
-            stats.append(stat)
-            road_data.append(data)
+            adic, road = run(cfg, args, example_gen=args["example_gen"])
+            adic_data.append(adic)
+            road_data.append(road)
         index = [f"Epoch {i}" for i in range(cfg["epochs"])]
     else:
-        stat, data = run(cfg, args, example_gen=args["example_gen"])
-        stats.append(stat)
-        road_data.append(data)
+        adic, road = run(cfg, args, example_gen=args["example_gen"])
+        adic_data.append(adic)
+        road_data.append(road)
         index = [f"Chosen Epoch {args['epoch']}"]
     columns = [
         "AD 100%",
@@ -156,7 +152,7 @@ def main(args):
         "IC 50%",
         "IC 15%",
     ]
-    data = pd.DataFrame(stats, columns=columns, index=index)
+    data = pd.DataFrame(adic_data, columns=columns, index=index)
     new_columns = [
         "AD 100%",
         "IC 100%",

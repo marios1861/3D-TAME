@@ -5,7 +5,6 @@ Usage:
     $ python -m tame.train --cfg resnet50_SGD.yaml --epoch -1
 """
 
-from pathlib import Path
 from typing import Any, Dict
 import warnings
 
@@ -45,8 +44,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
     print(
         f"{'Epoch':>6}{'GPU mem':>8}"
         f"{'train loss: total':>18}{'CE':>6}{'Area':>6}{'Var':>6}{'top 1':>6}{'top 5':>6}"
-        f"{'val loss: total':>16}{'CE':>6}{'Area':>6}{'Var':>6}"
-        f"{'AD/IC: 100%':>12}{'50%':>12}{'15%':>12}"
+        f"{'val: AD/IC: 100%':>20}{'ROAD: 10%/20%':>16}"
     )  # 75 characters
     # Epoch loop
     for epoch in range(last_epoch, epochs):
@@ -121,7 +119,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
             pbar.desc = (
                 f"{f'{epoch + 1}/{epochs}':>6}{mem:>8}"
                 f"{loss():>18.2f}{loss_ce():>6.2f}{loss_mean_mask():>6.2f}"
-                f"{loss_var_mask():>6.2f}{top1():>6.2f}{top5():>6.2f}" + " " * 70
+                f"{loss_var_mask():>6.2f}{top1():>6.2f}{top5():>6.2f}" + " " * 36
             )
             remaining = (
                 (pbar.total - pbar.n) / pbar.format_dict["rate"]
@@ -136,7 +134,7 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
             # Val
             if i == len(pbar) - 1:
                 model.noisy_masks = False
-                _ = val.run(model=model.eval(), dataloader=val_loader, pbar=pbar)
+                val.run(model=model.eval(), dataloader=val_loader, pbar=pbar)
                 model.noisy_masks = True
 
         # first epoch: 1, during training it is current_epoch == 0, saved as epoch_1 ...
@@ -145,10 +143,8 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
 
 
 def main(args):
-    FILE = Path(__file__).resolve()
-    ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
     print(yaml.dump(args, indent=4))
-    cfg = utils.load_config(ROOT_DIR / "configs" / f'{args["cfg"]}.yaml')
+    cfg = utils.load_config(args["cfg"])
     print(yaml.dump(cfg, indent=4))
     train(cfg, args)

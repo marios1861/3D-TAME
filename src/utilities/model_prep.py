@@ -9,7 +9,9 @@ from .composite_models import Generic
 
 def get_model(cfg: Dict[str, Any]) -> Generic:
     mdl = model_prep(cfg["model"])
-    mdl = Generic(cfg["model"], mdl, cfg["layers"].split(), cfg["version"], cfg["noisy_masks"])
+    mdl = Generic(
+        cfg["model"], mdl, cfg["layers"].split(), cfg["version"], cfg["noisy_masks"]
+    )
     mdl.cuda()
     return mdl
 
@@ -58,12 +60,26 @@ def get_schedule(
     steps_per_epoch: int,
     currect_epoch: int,
 ) -> lr._LRScheduler:
-    return lr.OneCycleLR(  # type: ignore
-        optimizer,
-        cfg["lr"],
-        epochs=cfg["epochs"],
-        steps_per_epoch=steps_per_epoch,
-        # this denotes the last iteration, if we are just starting out it should be its default
-        # value, -1
-        last_epoch=(currect_epoch * steps_per_epoch) if currect_epoch != 0 else -1,
-    )
+    if cfg["schedule"] == "NEW":
+        schedule = lr.OneCycleLR(  # type: ignore
+            optimizer,
+            cfg["lr"],
+            epochs=cfg["epochs"],
+            steps_per_epoch=steps_per_epoch,
+            # this denotes the last iteration, if we are just starting out it should be its default
+            # value, -1
+            last_epoch=(currect_epoch * steps_per_epoch) if currect_epoch != 0 else -1,
+        )
+    elif cfg["schedule"] == "CLASSIC":
+        schedule = lr.OneCycleLR(  # type: ignore
+            optimizer,
+            [cfg["lr"], 2 * cfg["lr"], 2 * cfg["lr"]],
+            epochs=cfg["epochs"],
+            steps_per_epoch=steps_per_epoch,
+            # this denotes the last iteration, if we are just starting out it should be its default
+            # value, -1
+            last_epoch=(currect_epoch * steps_per_epoch) if currect_epoch != 0 else -1,
+        )
+    else:
+        raise NotImplementedError(f'Schedule {cfg["schedule"]} not implemented.')
+    return schedule
