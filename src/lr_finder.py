@@ -3,7 +3,6 @@ Generate the loss to lr curve of a model given a configuration
 Usage:
     $ python -m tame.val --cfg resnet50_new.yaml
 """
-import argparse
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -11,23 +10,11 @@ from typing import Any, Dict, List, Tuple
 import torch
 from torch.cuda import amp
 from tqdm.auto import tqdm
+from utilities.utilities import get_project_root
 import yaml
 
-from . import utilities as utils
-from .utilities import AverageMeter
-
-
-def get_arguments():
-    parser = argparse.ArgumentParser(description="LR finder")
-    parser.add_argument(
-        "--cfg", type=str, default="default.yaml", help="config script name (not path)"
-    )
-    parser.add_argument("--beta", type=float, default=0.999)
-    parser.add_argument(
-        "--init", type=float, default=1e-8, help="initial learning rate"
-    )
-    parser.add_argument("--final", type=float, default=10, help="final learning rate")
-    return parser.parse_args()
+import utilities as utils
+from utilities import AverageMeter
 
 
 def find_lr(cfg: Dict[str, Any], args: Dict[str, Any]
@@ -110,17 +97,11 @@ def save_data(data: Tuple[List[float], List[float]], file_path: Path):
 
 
 def main(args: Dict[str, Any]):
-    FILE = Path(__file__).resolve()
-    ROOT_DIR = FILE.parents[1]
     print("Running parameters:\n")
-    cfg = utils.load_config(ROOT_DIR / "configs" / args["cfg"])
+    cfg = utils.load_config(args["cfg"])
     print(yaml.dump(cfg, indent=4))
-    data_dir = ROOT_DIR / "LR"
+    data_dir = get_project_root() / "LR"
     data_dir.mkdir(parents=True, exist_ok=True)
     file_path = data_dir / Path(args["cfg"]).with_suffix(".json")
     data = find_lr(cfg, args)
     save_data(data, file_path)
-
-
-if __name__ == "__main__":
-    main(vars(get_arguments()))

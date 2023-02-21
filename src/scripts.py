@@ -1,4 +1,5 @@
 import argparse
+import lr_finder
 import val
 import train
 import other_methods_vit as other
@@ -35,6 +36,7 @@ def parse_other(
         "grad",
         description="Evaluation script for methods included in pytorch_grad_cam library",
         parents=[general_parser],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     grad_parser.add_argument(
         "--method",
@@ -58,18 +60,33 @@ def parse_other(
         "hila",
         description="Evaluation script for method developed in Transformer Explainability",
         parents=[general_parser],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     hila_parser.set_defaults(func=hila.main)
 
 
+def parse_lr(parser: argparse.ArgumentParser):
+    parser.add_argument(
+        "--beta", help="exponential smoothing parameter", type=float, default=0.999
+    )
+    parser.add_argument(
+        "--init", type=float, default=1e-8, help="initial learning rate"
+    )
+    parser.add_argument("--final", type=float, default=10, help="final learning rate")
+    parser.set_defaults(func=lr_finder.main)
+
+
 def main():
-    general_parser = argparse.ArgumentParser(add_help=False)
+    general_parser = argparse.ArgumentParser(
+        add_help=False, formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     general_parser.add_argument(
         "--cfg", type=str, default="default", help="config script to use (not path)"
     )
     parser = argparse.ArgumentParser(
         prog="TAME",
         description="Trainable Attention Mechanism for Explanations",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     subparsers = parser.add_subparsers(title="subcommands")
 
@@ -79,12 +96,17 @@ def main():
         help="training subcommand",
         description="Train script for TAME",
         parents=[general_parser],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parse_train(train_parser)
 
-    eval_parser = argparse.ArgumentParser(add_help=False, parents=[general_parser])
+    eval_parser = argparse.ArgumentParser(
+        add_help=False,
+        parents=[general_parser],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     eval_parser.add_argument(
-        "-e", "--example_gen", type=int, help="config script to use (not path)"
+        "-e", "--example-gen", type=int, help="config script to use (not path)"
     )
 
     # create the parser for the val command
@@ -93,6 +115,7 @@ def main():
         help="tame evaluation subcommand",
         description="Eval script for TAME",
         parents=[eval_parser],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parse_val(val_parser)
 
@@ -102,8 +125,19 @@ def main():
         help="evaluation for other methods subcommand",
         description="Eval script for other methods",
         parents=[eval_parser],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parse_other(other_parser, eval_parser)
+
+    # lr finder
+    lr_parser = subparsers.add_parser(
+        "find-lr",
+        help="lr finder subcommand",
+        description="Learning rate finder script for TAME",
+        parents=[general_parser],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parse_lr(lr_parser)
 
     args = parser.parse_args()
     args.func(vars(args))
