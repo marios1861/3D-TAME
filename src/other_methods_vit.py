@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 import pandas as pd
 import torch
+from utilities.model_prep import model_prep
 import yaml
 from pytorch_grad_cam import (
     AblationCAM,
@@ -50,9 +51,12 @@ def run(
 
     # Dataloader
     dataloader = utils.data_loader(cfg)[2]
-    model = torch.hub.load(
-        "facebookresearch/deit:main", "deit_tiny_patch16_224", pretrained=True
-    )
+    if 'vit' in cfg['model']:
+        model = torch.hub.load(
+            "facebookresearch/deit:main", "deit_tiny_patch16_224", pretrained=True
+        )
+    else:
+        model = model_prep(cfg['model'])
     model.eval()
 
     # dig through dataloader to find input image size
@@ -84,18 +88,21 @@ def run(
         use_cuda = True
 
     if name == "ablationcam":
-        cam_model = cam_method[name](
-            model=model,
-            target_layers=target_layers,
-            use_cuda=use_cuda,
-            reshape_transform=reshape_transform,
-            ablation_layer=AblationLayerVit(),  # type: ignore
-        )
+        if 'vit' in cfg['model']:
+            cam_model = cam_method[name](
+                model=model,
+                target_layers=target_layers,
+                use_cuda=use_cuda,
+                reshape_transform=reshape_transform,
+                ablation_layer=AblationLayerVit(),  # type: ignore
+            )
+        else:
+            raise NotImplementedError(f"AblationCAM not implemented for model: {cfg['model']}")
     else:
         cam_model = cam_method[name](
             model=model,
             target_layers=target_layers,
-            reshape_transform=reshape_transform,
+            reshape_transform=reshape_transform if 'vit' in cfg['model'] else None,
             use_cuda=use_cuda,
         )
 
@@ -153,20 +160,22 @@ def main(args: Any):
         "layercam": LayerCAM,
         # "fullgrad": FullGrad,
     }
-
+    if 'resnet' in cfg['model']:
+        cfg['batch_size'] = 8
     stats: List[List[float]] = []
     road_data = []
     if not args.get("method"):
-        index = list(methods.keys())
+        index = list(methods.keys()) if not args["classic"] else list(methods.keys())[0:3]
         for name, method in methods.items():
             print(f"Evaluating {name} method")
             try:
                 stat, data = run(cfg, methods, name, example_gen=args["example_gen"])
                 stats.append(stat)
                 road_data.append(data)
-            except RuntimeError as e:
+            except (RuntimeError, AttributeError) as e:
                 print(e)
                 stats.append([])
+                road_data.append([])
 
     else:
         index = args["method"]
@@ -202,4 +211,6 @@ def main(args: Any):
     road_data = pd.DataFrame(
         road_data, index=index, columns=[10, 20, 30, 40, 50, 70, 90]
     )
-    road_data.to_csv(f"evaluation data/{cfg['model']}_other_road.csv", float_format="%.2f")
+    road_data.to_csv(
+        f"evaluation data/{cfg['model']}_other_road.csv", float_format="%.2f"
+    )

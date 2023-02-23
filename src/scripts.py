@@ -17,7 +17,7 @@ def parse_train(parser: argparse.ArgumentParser):
         "-t",
         "--tensorboard",
         action="store_true",
-        help="whether to log training at tensorboard.dev"
+        help="whether to log training at tensorboard.dev",
     )
     parser.set_defaults(func=train.main)
 
@@ -59,6 +59,12 @@ def parse_other(
             "layercam",
             "fullgrad",
         ],
+    )
+
+    grad_parser.add_argument(
+        "--classic",
+        action="store_true",
+        help="evaluate on classic methods (gradcam, scorecam, gradcam++ and ablationcam)",
     )
     grad_parser.set_defaults(func=other.main)
 
