@@ -198,8 +198,8 @@ def main(args: Any):
         "IC 15%",
     ]
     data = data.reindex(columns=new_columns)
-    data.to_csv("evaluation data/other_method_data.csv", float_format="%.2f")
+    data.to_csv(f"evaluation data/{cfg['model']}_other_adic.csv", float_format="%.2f")
     road_data = pd.DataFrame(
         road_data, index=index, columns=[10, 20, 30, 40, 50, 70, 90]
     )
-    road_data.to_csv("evaluation data/other_road_data.csv", float_format="%.2f")
+    road_data.to_csv(f"evaluation data/{cfg['model']}_other_road.csv", float_format="%.2f")

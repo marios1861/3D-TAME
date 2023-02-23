@@ -13,3 +13,4 @@ doodle.ipynb
 *.csv
 *.egg-info
 evaluation data/
+.tb_logs/

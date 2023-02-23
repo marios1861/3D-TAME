@@ -5,12 +5,13 @@ Usage:
     $ python -m tame.train --cfg resnet50_SGD.yaml --epoch -1
 """
 
-from typing import Any, Dict
 import warnings
+from typing import Any, Dict
 
 import torch
 import yaml
 from torch.cuda import amp
+from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
 import utilities as utils
@@ -39,6 +40,16 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
     scheduler = utils.get_schedule(cfg, optimizer, len(train_loader), last_epoch)
 
     # Train
+
+    # Tensorboard logger
+    writer = None
+    iters = None
+    if args["tensorboard"]:
+        writer = SummaryWriter(
+            log_dir=args["tblogdir"],
+            purge_step=len(train_loader) * last_epoch,
+        )
+        iters = 0
     scaler = amp.GradScaler()
     epochs = cfg["epochs"]
     print(
@@ -131,6 +142,29 @@ def train(cfg: Dict[str, Any], args: Dict[str, Any]):
             )
             pbar.set_postfix({"ETA": pbar.format_interval(total)})
 
+            if args["tensorboard"]:
+                assert writer is not None
+                assert iters is not None
+                writer.add_scalar("LR", scheduler.get_last_lr()[0], iters)
+                writer.add_scalars(
+                    "Losses",
+                    {
+                        "Total Loss": loss_val.item(),
+                        "Mean Mask Loss": loss_mean_mask_val.item(),
+                        "Var Loss": loss_var_mask_val.item(),
+                        "CE Loss": loss_ce_val.item(),
+                    },
+                    global_step=iters,
+                )
+                writer.add_scalars(
+                    "Accuracy",
+                    {"Top 1": top1_val[0],
+                     "Top 5": top1_val[0]},
+                    global_step=iters
+                )
+                writer.flush()
+                iters += 1
+
             # Val
             if i == len(pbar) - 1:
                 model.noisy_masks = False
@@ -146,5 +180,10 @@ def main(args):
     print("Running parameters:\n")
     print(yaml.dump(args, indent=4))
     cfg = utils.load_config(args["cfg"])
+
+    if args["tensorboard"]:
+        args["tblogdir"] = f'./.tb_logs/{args["cfg"]}/'
+        # run this in a separate shell to get results on tensorboard.dev
+        # f'tensorboard dev upload --logdir {args["tblogdir"]} --name {args["cfg"]} &> /dev/null'
     print(yaml.dump(cfg, indent=4))
     train(cfg, args)

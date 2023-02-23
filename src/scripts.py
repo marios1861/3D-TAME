@@ -13,6 +13,12 @@ def parse_train(parser: argparse.ArgumentParser):
         default=None,
         help="epoch to load, set to -1 to restart training, omit to restart on last saved epoch",
     )
+    parser.add_argument(
+        "-t",
+        "--tensorboard",
+        action="store_true",
+        help="whether to log training at tensorboard.dev"
+    )
     parser.set_defaults(func=train.main)
 
 
