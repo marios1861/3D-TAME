@@ -15,3 +15,5 @@ timm
 typing_extensions
 tensorboard
 jaxtyping
+pytorch-lightning
+torchmetrics
