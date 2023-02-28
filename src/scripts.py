@@ -1,7 +1,7 @@
 import argparse
 import lr_finder
 import val
-import train
+import old_train as train
 import other_methods_vit as other
 import transformer_explainability_val as hila
 
