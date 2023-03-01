@@ -172,7 +172,7 @@ def main(args: Any):
                 stat, data = run(cfg, methods, name, example_gen=args["example_gen"])
                 stats.append(stat)
                 road_data.append(data)
-            except (RuntimeError, AttributeError) as e:
+            except (RuntimeError, AttributeError, ValueError) as e:
                 print(e)
                 stats.append([])
                 road_data.append([])
