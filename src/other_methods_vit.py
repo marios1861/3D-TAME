@@ -166,7 +166,7 @@ def main(args: Any):
     road_data = []
     if not args.get("method"):
         index = list(methods.keys()) if not args["classic"] else list(methods.keys())[0:3]
-        for name, method in methods.items():
+        for name in index:
             print(f"Evaluating {name} method")
             try:
                 stat, data = run(cfg, methods, name, example_gen=args["example_gen"])
