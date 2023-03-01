@@ -6,6 +6,7 @@ Usage:
 """
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
+import traceback
 
 import pandas as pd
 import torch
@@ -51,12 +52,18 @@ def run(
     # Dataloader
     dataloader = utils.data_loader(cfg)[2]
     if "vit" in cfg["model"]:
-        model = torch.hub.load(
+        raw_model = torch.hub.load(
             "facebookresearch/deit:main", "deit_tiny_patch16_224", pretrained=True
         )
     else:
-        model = model_prep(cfg["model"])
-    model.eval()
+        raw_model = model_prep(cfg["model"])
+
+    raw_model.eval()
+    normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    model = torch.nn.Sequential(
+        normalize,
+        raw_model
+    )
 
     # dig through dataloader to find input image size
     transform: transforms.Compose = dataloader.dataset.transform  # type: ignore
@@ -73,20 +80,26 @@ def run(
     )
 
     metric_AD_IC = metrics.AD_IC(
-        model, img_size, percent_list=percent_list, normalize=True
+        model, img_size, percent_list=percent_list
     )
     metric_ROAD = metrics.ROAD(model, ROADMostRelevantFirst)
     if "vit" in cfg["model"]:
-        target_layers = [model.blocks[-1].norm1]  # type: ignore
+        target_layers = [model[1].blocks[-1].norm1]  # type: ignore
     elif "resnet" in cfg["model"]:
-        target_layers = [model.layer4[-1]]  # type: ignore
+        target_layers = [model[1].layer4[-1]]  # type: ignore
     else:
-        target_layers = [model.features[29]]  # type: ignore
+        target_layers = [model[1].features[29]]  # type: ignore
 
     if name == "scorecam":
         use_cuda = True
     else:
         use_cuda = True
+
+    if name == "scorecam":
+        if "resnet" in cfg["model"]:
+            cfg["batch_size"] = 4
+        else:
+            cfg["batch_size"] = 16
 
     if name == "ablationcam":
         if "vit" in cfg["model"]:
@@ -124,7 +137,6 @@ def run(
         )
         quit()
 
-    normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     for _, (images, labels) in bar:
         if use_cuda:
             images, labels = images.cuda(), labels.cuda()  # type: ignore
@@ -132,13 +144,13 @@ def run(
         images: torch.Tensor
         labels: torch.LongTensor
 
-        logits: torch.Tensor = model(normalize(images))
+        logits: torch.Tensor = model(images)
 
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
-        masks = cam_model(input_tensor=normalize(images))  # type: ignore
+        masks = cam_model(input_tensor=images)  # type: ignore
         # disable road temporarily
-        # metric_ROAD(normalize(images), model_truth, normalize(masks))
+        metric_ROAD(images, model_truth, masks)
         if use_cuda:
             masks = torch.tensor(masks).cuda().unsqueeze(dim=1)
         else:
@@ -168,11 +180,6 @@ def main(args: Any):
         "layercam": LayerCAM,
         # "fullgrad": FullGrad,
     }
-    if cfg["method"] == "scorecam":
-        if "resnet" in cfg["model"]:
-            cfg["batch_size"] = 4
-        else:
-            cfg["batch_size"] = 16
     stats: List[List[float]] = []
     road_data = []
     if not args.get("method"):
@@ -186,6 +193,7 @@ def main(args: Any):
                 stats.append(stat)
                 road_data.append(data)
             except (RuntimeError, AttributeError, ValueError) as e:
+                print(traceback.format_exc())
                 print(e)
                 stats.append([])
                 road_data.append([])
@@ -199,7 +207,8 @@ def main(args: Any):
             )
             stats.append(stat)
             road_data.append(data)
-        except RuntimeError as e:
+        except (RuntimeError, AttributeError, ValueError) as e:
+            print(traceback.format_exc())
             print(e)
             stats.append([])
     columns = [

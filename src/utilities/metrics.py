@@ -24,13 +24,10 @@ class AD_IC:
     noisy_masks: bool = False
     ADs: List[AverageMeter] = field(default_factory=list)
     ICs: List[AverageMeter] = field(default_factory=list)
-    normalize: bool = False
 
     def __post_init__(self):
         self.ADs = [AverageMeter(type="avg") for _ in self.percent_list]
         self.ICs = [AverageMeter(type="avg") for _ in self.percent_list]
-        self.chosen_logits_list = None
-        self.new_logits_list = None
 
     @torch.no_grad()
     def __call__(
@@ -47,9 +44,6 @@ class AD_IC:
             self.percent_list,
             self.noisy_masks,
         )
-        if self.normalize:
-            normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            masked_images_list = [normalize(masked_image) for masked_image in masked_images_list]
 
         new_logits_list = [
             new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
@@ -57,26 +51,12 @@ class AD_IC:
                 self.model(masked_images) for masked_images in masked_images_list
             ]
         ]
-        
-        if chosen_logits.dim() == 0:
-            chosen_logits.unsqueeze(-1)
-        if new_logits_list[0].dim() == 0:
-            new_logits_list = [new_logits.unsqueeze(-1) for new_logits in new_logits_list]
-        if self.chosen_logits_list is not None:
-            assert self.new_logits_list is not None
-            self.chosen_logits_list = [torch.cat((old_chosen_logits, chosen_logits)) for old_chosen_logits in self.chosen_logits_list]
-            self.new_logits_list = [torch.cat((old_new_logits, new_logits)) for old_new_logits, new_logits in zip(self.new_logits_list, new_logits_list)]
-        else: 
-            self.chosen_logits_list = [chosen_logits for _ in range(3)]
-            self.new_logits_list = new_logits_list
 
-    def get_results(self) -> Tuple[List[float], List[float]]:
-        assert self.chosen_logits_list is not None
-        assert self.new_logits_list is not None
-        print(self.chosen_logits_list[0][0:100])
-        for AD, IC, chosen_logits, new_logits in zip(self.ADs, self.ICs, self.chosen_logits_list, self.new_logits_list):
+        for AD, IC, new_logits in zip(self.ADs, self.ICs, new_logits_list):
             AD.update(get_AD(chosen_logits, new_logits).item())
             IC.update(get_IC(chosen_logits, new_logits).item())
+
+    def get_results(self) -> Tuple[List[float], List[float]]:
         return [AD() for AD in self.ADs], [IC() for IC in self.ICs]
 
 
