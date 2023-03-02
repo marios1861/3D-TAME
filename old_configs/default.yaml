@@ -6,7 +6,10 @@ datalist_file: false
 model: vgg16  # Model name
 batch_size: 32
 num_workers: 4
-layers: 'features.16 features.23 features.30'
+layers: 
+  - features.16
+  - features.23
+  - features.30
 version: TAME  # Or Noskipconnection, NoskipNobatchnorm, Sigmoidinfeaturebranch
 optimizer: SGD  # Or Adam, Adamw, RMSProp
 schedule: NEW

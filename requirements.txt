@@ -15,5 +15,5 @@ timm
 typing_extensions
 tensorboard
 jaxtyping
-"pytorch-lightning[extra]"
+pytorch-lightning[extra]
 torchmetrics

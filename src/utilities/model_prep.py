@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from torch import nn, optim
 from torch.optim import lr_scheduler as lr
@@ -9,11 +9,36 @@ from .composite_models import Generic
 
 def get_model(cfg: Dict[str, Any]) -> Generic:
     mdl = model_prep(cfg["model"])
-    mdl = Generic(
-        cfg["model"], mdl, cfg["layers"].split(), cfg["version"], cfg["noisy_masks"]
-    )
+    mdl = Generic(cfg["model"], mdl, cfg["layers"], cfg["version"], cfg["noisy_masks"])
     mdl.cuda()
     return mdl
+
+
+def pl_get_config(
+    model_name: str,
+    layers: List[str],
+    attention_version: str,
+    noisy_masks: bool,
+    optimizer: str,
+    momentum: float,
+    decay: float,
+    schedule: str,
+    lr: float,
+    epochs: int,
+) -> Dict:
+    cfg = {
+        "model": model_name,
+        "layers": layers,
+        "version": attention_version,
+        "noisy_masks": noisy_masks,
+        "optimizer": optimizer,
+        "momentum": momentum,
+        "decay": decay,
+        "schedule": schedule,
+        "lr": lr,
+        "epochs": epochs
+    }
+    return cfg
 
 
 def model_prep(model_name: str) -> nn.Module:
