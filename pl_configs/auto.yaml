@@ -20,7 +20,6 @@ trainer:
   check_val_every_n_epoch: 1
   fast_dev_run: false
   accumulate_grad_batches: null
-  max_epochs: null
   min_epochs: null
   max_steps: -1
   min_steps: null
@@ -53,14 +52,16 @@ trainer:
   multiple_trainloader_mode: max_size_cycle
   inference_mode: true
 model:
+  model_name: null
   layers: null
-  attention_version: null
-  noisy_masks: null
-  optimizer: null
-  momentum: null
-  decay: null
-  schedule: null
-  lr: null
+  attention_version: TAME
+  noisy_masks: true
+  optimizer: SGD
+  momentum: 0.9
+  decay: 0.0005
+  schedule: NEW
+  lr: 0.001
+  epochs: 8
   percent_list:
   - 0.0
   - 0.5
@@ -72,5 +73,4 @@ data:
   input_size: 256
   crop_size: 224
   datalist_file: null
-  model: null
 ckpt_path: null

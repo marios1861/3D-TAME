@@ -1,19 +1,21 @@
-from dataclasses import dataclass, field
 import math
-from typing import List, Tuple, Union, Type
+from dataclasses import dataclass, field
+from typing import List, Tuple, Type, Union
 
 import cv2
 import numpy as np
 import torch
 import torchvision.transforms as transforms
+from pytorch_grad_cam.metrics.road import ROADLeastRelevantFirst, ROADMostRelevantFirst
+from pytorch_grad_cam.utils.model_targets import RawScoresOutputTarget
 from sklearn import metrics
 from torch.nn import functional as F
-from pytorch_grad_cam.metrics.road import (
-    ROADMostRelevantFirst,
-    ROADLeastRelevantFirst,
-)
-from pytorch_grad_cam.utils.model_targets import RawScoresOutputTarget
+from torchmetrics import Metric
+
 from .avg_meter import AverageMeter
+
+
+# class pl_ADIC(Metric):
 
 
 @dataclass

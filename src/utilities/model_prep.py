@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from torch import nn, optim
 from torch.optim import lr_scheduler as lr
@@ -36,7 +36,7 @@ def pl_get_config(
         "decay": decay,
         "schedule": schedule,
         "lr": lr,
-        "epochs": epochs
+        "epochs": epochs,
     }
     return cfg
 
@@ -82,28 +82,35 @@ def get_optim(cfg: Dict[str, Any], model: Generic) -> optim.Optimizer:
 def get_schedule(
     cfg: Dict[str, Any],
     optimizer: optim.Optimizer,
-    steps_per_epoch: int,
     currect_epoch: int,
+    steps_per_epoch: Optional[int] = None,
+    total_steps: Optional[int] = None,
 ) -> lr._LRScheduler:
     if cfg["schedule"] == "NEW":
         schedule = lr.OneCycleLR(  # type: ignore
             optimizer,
             cfg["lr"],
-            epochs=cfg["epochs"],
-            steps_per_epoch=steps_per_epoch,
+            epochs=cfg["epochs"] if total_steps is None else None,  # type:ignore
+            steps_per_epoch=steps_per_epoch,  # type:ignore
+            total_steps=total_steps,  # type:ignore
             # this denotes the last iteration, if we are just starting out it should be its default
             # value, -1
-            last_epoch=(currect_epoch * steps_per_epoch) if currect_epoch != 0 else -1,
+            last_epoch=(currect_epoch * steps_per_epoch)  # type:ignore
+            if currect_epoch != 0
+            else -1,
         )
     elif cfg["schedule"] == "CLASSIC":
         schedule = lr.OneCycleLR(  # type: ignore
             optimizer,
             [cfg["lr"], 2 * cfg["lr"], 2 * cfg["lr"]],
-            epochs=cfg["epochs"],
-            steps_per_epoch=steps_per_epoch,
+            epochs=cfg["epochs"] if total_steps is None else None,  # type:ignore
+            steps_per_epoch=steps_per_epoch,  # type:ignore
+            total_steps=total_steps,  # type:ignore
             # this denotes the last iteration, if we are just starting out it should be its default
             # value, -1
-            last_epoch=(currect_epoch * steps_per_epoch) if currect_epoch != 0 else -1,
+            last_epoch=(currect_epoch * steps_per_epoch)  # type:ignore
+            if currect_epoch != 0
+            else -1,
         )
     else:
         raise NotImplementedError(f'Schedule {cfg["schedule"]} not implemented.')

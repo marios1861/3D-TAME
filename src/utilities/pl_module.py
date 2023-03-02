@@ -46,14 +46,18 @@ class TAMELIT(pl.LightningModule):
             epochs,
         )
         self.generic = ut.get_model(self.cfg)
+
+        # threshold is 0 because we use un-normalized logits to save on computation time
         self.accuracy = torchmetrics.Accuracy(
-            task="multiclass", num_classes=num_classes
+            task="multiclass", num_classes=num_classes, threshold=0
         )
         self.img_size = img_size
         self.metric_AD_IC = metrics.AD_IC(
             self.generic, img_size, percent_list=percent_list
         )
         self.metric_ROAD = metrics.ROAD(self.generic, ROADMostRelevantFirst)
+        self.generic.requires_grad_(False)
+        self.generic.attn_mech.requires_grad_()
 
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
@@ -67,14 +71,16 @@ class TAMELIT(pl.LightningModule):
             mean_mask,
             var,
         ) = self.generic.get_loss(logits, labels, masks)
+        self.accuracy(logits, labels)
         self.log_dict(
             {
-                "loss": loss,
-                "ce": ce,
-                "mean": mean_mask,
-                "var": var,
-                "accuracy": self.accuracy,
-            }
+                "Loss": loss,
+                "CE": ce,
+                "Mean": mean_mask,
+                "Var": var,
+                "Accuracy": self.accuracy,
+            },
+            sync_dist=True,
         )
         return {"loss": loss, "ce": ce, "mean": mean_mask, "var": var}
 
@@ -89,6 +95,7 @@ class TAMELIT(pl.LightningModule):
             mean_mask,
             var,
         ) = self.generic.get_loss(logits, labels, masks)
+        self.accuracy(logits, labels)
         self.log_dict(
             {
                 "val_loss": loss,
@@ -96,7 +103,8 @@ class TAMELIT(pl.LightningModule):
                 "val_mean": mean_mask,
                 "val_var": var,
                 "val_accuracy": self.accuracy,
-            }
+            },
+            sync_dist=True,
         )
 
     def test_step(self, batch, batch_idx):
@@ -119,16 +127,22 @@ class TAMELIT(pl.LightningModule):
 
         ADs, ICs = self.metric_AD_IC.get_results()
         ROADs = self.metric_ROAD.get_results()
-        self.log("ADs", torch.tensor(ADs))
-        self.log("ICs", torch.tensor(ICs))
-        self.log("ROADS", torch.tensor(ROADs))
+        self.log("ADs", torch.tensor(ADs), sync_dist=True)
+        self.log("ICs", torch.tensor(ICs), sync_dist=True)
+        self.log("ROADS", torch.tensor(ROADs), sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = ut.get_optim(self.cfg, self.generic)
+        # the total steps are divided between num_nodes
         scheduler = ut.get_schedule(
-            self.cfg, optimizer, self.trainer.max_steps, self.current_epoch
+            self.cfg,
+            optimizer,
+            self.current_epoch,
+            total_steps=int(self.trainer.estimated_stepping_batches),
         )
-        return (optimizer, scheduler)
+        return [optimizer], [
+            {"scheduler": scheduler, "interval": "step", "name": "LR", "frequency": 1}
+        ]
 
 
 class LightnightDataset(pl.LightningDataModule):
@@ -137,6 +151,8 @@ class LightnightDataset(pl.LightningDataModule):
         dataset_path: Path,
         datalist_path: Path,
         batch_size: int = 32,
+        num_workers: int = 12,
+        num_classes: int = 1000,
         input_size: int = 256,
         crop_size: int = 224,
         datalist_file: Optional[str] = None,
@@ -148,6 +164,8 @@ class LightnightDataset(pl.LightningDataModule):
         self.dataset_path = dataset_path
         self.datalist_path = datalist_path
 
+        self.num_workers = num_workers
+        self.num_classes = num_classes
         self.batch_size = batch_size
         self.datalist_file = datalist_file
         self.model = model
@@ -172,6 +190,7 @@ class LightnightDataset(pl.LightningDataModule):
             dataset_train,
             batch_size=self.batch_size,
             shuffle=True,
+            num_workers=self.num_workers,
         )
         return train_loader
 
@@ -194,6 +213,7 @@ class LightnightDataset(pl.LightningDataModule):
             dataset_val,
             batch_size=self.batch_size,
             shuffle=False,
+            num_workers=self.num_workers,
         )
         return val_loader
 
@@ -216,5 +236,6 @@ class LightnightDataset(pl.LightningDataModule):
             dataset_test,
             batch_size=self.batch_size,
             shuffle=False,
+            num_workers=self.num_workers,
         )
         return test_loader
