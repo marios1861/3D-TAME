@@ -17,16 +17,16 @@ from utilities.load_data import MyDataset
 class TAMELIT(pl.LightningModule):
     def __init__(
         self,
-        model: str,
+        model_name: str,
         layers: List[str],
-        attention_version: str,
-        noisy_masks: bool,
-        optimizer: str,
-        momentum: float,
-        decay: float,
-        schedule: str,
-        lr: float,
-        epochs: int,
+        attention_version: str = "TAME",
+        noisy_masks: bool = True,
+        optimizer: str = "SGD",
+        momentum: float = 0.9,
+        decay: float = 5.0e-4,
+        schedule: str = "NEW",
+        lr: float = 1.0e-3,
+        epochs: int = 8,
         img_size: int = 224,
         percent_list: List[float] = [0.0, 0.5, 0.85],
         num_classes: int = 1000,
@@ -34,7 +34,7 @@ class TAMELIT(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.cfg = ut.pl_get_config(
-            model,
+            model_name,
             layers,
             attention_version,
             noisy_masks,
@@ -152,7 +152,7 @@ class LightnightDataset(pl.LightningDataModule):
         self.datalist_file = datalist_file
         self.model = model
 
-    def setup(self, stage: str):
+    def train_dataloader(self):
         tsfm_train = transforms.Compose(
             [
                 transforms.Resize(self.input_size),
@@ -161,7 +161,21 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.ToTensor(),
             ]
         )
+        dataset_train = MyDataset(
+            self.dataset_path / "ILSVRC2012_img_train",
+            self.datalist_path / self.datalist_file
+            if self.datalist_file
+            else self.datalist_path / f"{self.model}_train.txt",
+            transform=tsfm_train,
+        )
+        train_loader = DataLoader(
+            dataset_train,
+            batch_size=self.batch_size,
+            shuffle=True,
+        )
+        return train_loader
 
+    def val_dataloader(self):
         tsfm_val = transforms.Compose(
             [
                 transforms.Resize(self.input_size),
@@ -170,43 +184,36 @@ class LightnightDataset(pl.LightningDataModule):
             ]
         )
 
-        self.dataset_train = MyDataset(
-            self.dataset_path / "ILSVRC2012_img_train",
-            self.datalist_path / self.datalist_file
-            if self.datalist_file
-            else self.datalist_path / f"{self.model}_train.txt",
-            transform=tsfm_train,
-        )
-        self.dataset_val = MyDataset(
+        dataset_val = MyDataset(
             Path(self.dataset_path) / "ILSVRC2012_img_val",
             self.datalist_path / "Validation_2000.txt",
             transform=tsfm_val,
         )
-        self.dataset_test = MyDataset(
-            Path(self.dataset_path) / "ILSVRC2012_img_val",
-            self.datalist_path / "Evaluation_2000.txt",
-            transform=tsfm_val,
-        )
 
-    def train_dataloader(self):
-        train_loader = DataLoader(
-            self.dataset_train,
-            batch_size=self.batch_size,
-            shuffle=True,
-        )
-        return train_loader
-
-    def val_dataloader(self):
         val_loader = DataLoader(
-            self.dataset_val,
+            dataset_val,
             batch_size=self.batch_size,
             shuffle=False,
         )
         return val_loader
 
     def test_dataloader(self):
+        tsfm_val = transforms.Compose(
+            [
+                transforms.Resize(self.input_size),
+                transforms.CenterCrop(self.crop_size),
+                transforms.ToTensor(),
+            ]
+        )
+
+        dataset_test = MyDataset(
+            Path(self.dataset_path) / "ILSVRC2012_img_val",
+            self.datalist_path / "Evaluation_2000.txt",
+            transform=tsfm_val,
+        )
+
         test_loader = DataLoader(
-            self.dataset_test,
+            dataset_test,
             batch_size=self.batch_size,
             shuffle=False,
         )

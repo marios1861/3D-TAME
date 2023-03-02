@@ -12,9 +12,9 @@ from utilities.pl_module import TAMELIT, LightnightDataset
 
 class MyLightningCLI(LightningCLI):
     def add_arguments_to_parser(self, parser):
-        parser.link_arguments("data.model", "model.model")
+        parser.link_arguments("model.model_name", "data.model")
         parser.link_arguments("data.crop_size", "model.img_size")
-        parser.link_arguments("trainer.max_epochs", "model.epochs")
+        parser.link_arguments("model.epochs", "trainer.max_epochs")
         parser.link_arguments(
             "data.num_classes", "model.num_classes", apply_on="instantiate"
         )

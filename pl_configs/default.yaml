@@ -1,0 +1,10 @@
+data:
+  dataset: /home/marios/Documents/imagenet-1k # Absolute path to dataset dir
+  datalist: /home/marios/Documents/T-TAME/datalist/ILSVRC # Absolute path to datalist dir
+model:
+  model_name: vgg16
+  layers:
+    - features.16
+    - features.23
+    - features.30
+  
