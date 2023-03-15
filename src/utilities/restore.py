@@ -51,6 +51,7 @@ def get_checkpoint_dir(
     cfg_name: str, cfg: Dict[str, Any], epoch: Optional[int] = None
 ) -> Path:
     # we have already read the snapshot_ids.csv file
+    Path(cfg["snapshot_dir"]).mkdir(exist_ok=True)
     if "checkpoint_dir" in cfg.keys():
         checkpoint_dir = cfg["checkpoint_dir"]
     else:
