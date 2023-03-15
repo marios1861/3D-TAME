@@ -74,11 +74,11 @@ class TAMELIT(pl.LightningModule):
         self.accuracy(logits, labels)
         self.log_dict(
             {
-                "Loss": loss,
-                "CE": ce,
-                "Mean": mean_mask,
-                "Var": var,
-                "Accuracy": self.accuracy,
+                "training/Loss": loss,
+                "training/CE": ce,
+                "training/Mean": mean_mask,
+                "training/Var": var,
+                "training/Accuracy": self.accuracy,
             },
             sync_dist=True,
         )
@@ -98,11 +98,11 @@ class TAMELIT(pl.LightningModule):
         self.accuracy(logits, labels)
         self.log_dict(
             {
-                "val_loss": loss,
-                "val_ce": ce,
-                "val_mean": mean_mask,
-                "val_var": var,
-                "val_accuracy": self.accuracy,
+                "validation/loss": loss,
+                "validation/ce": ce,
+                "validation/mean": mean_mask,
+                "validation/var": var,
+                "validation/accuracy": self.accuracy,
             },
             sync_dist=True,
         )
@@ -127,9 +127,9 @@ class TAMELIT(pl.LightningModule):
 
         ADs, ICs = self.metric_AD_IC.get_results()
         ROADs = self.metric_ROAD.get_results()
-        self.log("ADs", torch.tensor(ADs), sync_dist=True)
-        self.log("ICs", torch.tensor(ICs), sync_dist=True)
-        self.log("ROADS", torch.tensor(ROADs), sync_dist=True)
+        self.log("testing/ADs", torch.tensor(ADs), sync_dist=True)
+        self.log("testing/ICs", torch.tensor(ICs), sync_dist=True)
+        self.log("testing/ROADS", torch.tensor(ROADs), sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = ut.get_optim(self.cfg, self.generic)
