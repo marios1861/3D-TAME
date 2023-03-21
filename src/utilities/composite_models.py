@@ -13,10 +13,153 @@ from torchvision.models.feature_extraction import (
 
 class AttentionMech(nn.Module):
     def __init__(self, ft_size: List[torch.Size]):
-        super(AttentionMech, self).__init__()
+        super().__init__()
 
     def forward(self, features: List[torch.Tensor]) -> Tuple[torch.Tensor]:
         raise NotImplementedError
+
+
+class TAttentionV2(AttentionMech):
+    def __init__(self, ft_size: List[torch.Size]):
+        super().__init__(ft_size)
+        # noinspection PyTypeChecker
+        self.mhas = nn.ModuleList(
+            [nn.MultiheadAttention(ft[2], 12, batch_first=True) for ft in ft_size]
+        )
+        ln_dim = ft_size[0][2]
+        self.lns = nn.ModuleList(
+            [
+                nn.LayerNorm(
+                    ln_dim,
+                    eps=1e-06,
+                )
+                for _ in ft_size
+            ]
+        )
+        self.relu = nn.ReLU()
+
+        def reshape_transform(tensor, height=14, width=14):
+            result = tensor[:, 1:, :].reshape(
+                tensor.size(0), height, width, tensor.size(2)
+            )
+
+            # Bring the channels to the first dimension,
+            # like in CNNs.
+            result = result.transpose(2, 3).transpose(1, 2)
+            return result
+
+        self.reshape = reshape_transform
+        fuse_channels = sum(ft[2] for ft in ft_size)
+
+        self.cnn_fuser = nn.Conv2d(
+            in_channels=fuse_channels,
+            out_channels=1000,
+            kernel_size=1,
+            padding=0,
+            bias=True,
+        )
+
+    def forward(self, features):
+        feature_maps = features
+        # Multihead Attention
+        class_maps = [
+            op(feature, need_weights=False)
+            for op, feature in zip(self.mhas, feature_maps)
+        ]
+        # layer norm
+        class_maps = [op(feature) for op, feature in zip(self.lns, class_maps)]
+        # add (skip connection)
+        class_maps = [
+            class_map + feature_map
+            for class_map, feature_map in zip(class_maps, feature_maps)
+        ]
+        # activation
+        class_maps = [self.relu(class_map) for class_map in class_maps]
+        # Reshape
+        class_maps = [self.reshape(class_map) for class_map in class_maps]
+        # Concat
+        class_map = torch.cat(class_maps, 2)
+        # fuse into 1000 channels
+        c = self.cnn_fuser(class_map)  # batch_size x1xWxH
+        # activation
+        a = torch.sigmoid(c)
+
+        return a, c
+
+
+class TAttentionV1(AttentionMech):
+    def __init__(self, ft_size: List[torch.Size]):
+        super().__init__(ft_size)
+        # noinspection PyTypeChecker
+        self.mhas = nn.ModuleList(
+            [nn.MultiheadAttention(ft[2], 12, batch_first=True) for ft in ft_size]
+        )
+        ln_dim = ft_size[0][2]
+        self.lns = nn.ModuleList(
+            [
+                nn.LayerNorm(
+                    ln_dim,
+                    eps=1e-06,
+                )
+                for _ in ft_size
+            ]
+        )
+        self.relu = nn.ReLU()
+
+        def reshape_transform(tensor, height=14, width=14):
+            result = tensor[:, 1:, :].reshape(
+                tensor.size(0), height, width, tensor.size(2)
+            )
+
+            # Bring the channels to the first dimension,
+            # like in CNNs.
+            result = result.transpose(2, 3).transpose(1, 2)
+            return result
+
+        self.reshape = reshape_transform
+        fuse_channels = sum(ft[2] for ft in ft_size)
+        # noinspection PyTypeChecker
+
+        self.mha_fuser = nn.MultiheadAttention(fuse_channels, 12, batch_first=True)
+
+        self.cnn_fuser = nn.Conv2d(
+            in_channels=fuse_channels,
+            out_channels=1000,
+            kernel_size=1,
+            padding=0,
+            bias=True,
+        )
+
+    def forward(self, features):
+        feature_maps = features
+        # Multihead Attention
+        class_maps = [
+            op(feature, feature, feature, need_weights=False)[0]
+            for op, feature in zip(self.mhas, feature_maps)
+        ]
+        # layer norm
+        class_maps = [op(feature) for op, feature in zip(self.lns, class_maps)]
+        # add (skip connection)
+        class_maps = [
+            class_map + feature_map
+            for class_map, feature_map in zip(class_maps, feature_maps)
+        ]
+        # activation
+        class_maps = [self.relu(class_map) for class_map in class_maps]
+        # concat
+        class_map = torch.cat(class_maps, 2)
+        # Multihead Attention
+        class_map = self.mha_fuser(class_map, class_map, class_map, need_weights=False)[
+            0
+        ]
+        # Reshape
+        class_maps = self.reshape(class_map)
+        # fuse into 1000 channels
+        c = self.cnn_fuser(class_map)  # batch_size x1xWxH
+        # activation
+        a = torch.sigmoid(c)
+
+        return a, c
 
 
 class AttentionTAME(AttentionMech):
@@ -311,15 +454,21 @@ class Generic(nn.Module):
         # Required for attention mechanism initialization
         ft_size = [o.shape for o in out.values()]
         # Build Attention mechanism
-        if Generic.is_transformer(mdl):
-            if 'vit_b_16' == name:
+        if Generic.is_transformer(mdl) and "TAttention" not in attn_version:
+            if "vit_b_16" == name:
                 ft_size = [torch.Size([2, 768, 14, 14]) for _ in out.values()]
             else:
-                raise NotImplementedError(f'TAME not implemented for the transformer {name}.')
-            self.attn_mech = AttentionMechFactory.create_attention(attn_version, ft_size)
+                raise NotImplementedError(
+                    f"TAME not implemented for the transformer {name}."
+                )
+            self.attn_mech = AttentionMechFactory.create_attention(
+                attn_version, ft_size
+            )
             self.attn_mech = nn.Sequential(Generic.PreprocessSeq(name), self.attn_mech)
         else:
-            self.attn_mech = AttentionMechFactory.create_attention(attn_version, ft_size)
+            self.attn_mech = AttentionMechFactory.create_attention(
+                attn_version, ft_size
+            )
 
         # Get loss and forward training method
         self.arr = "1-1"
@@ -340,19 +489,23 @@ class Generic(nn.Module):
     class PreprocessSeq(nn.Module):
         def __init__(self, name: str):
             super(Generic.PreprocessSeq, self).__init__()
-            implementations = {'vit_b_16': self.forward_vit_b_16}
+            implementations = {"vit_b_16": self.forward_vit_b_16}
             try:
                 self.forward = implementations[name]
             except KeyError:
-                raise KeyError(f"Feature preprocessing not implemented for transformer {name}")
+                raise KeyError(
+                    f"Feature preprocessing not implemented for transformer {name}"
+                )
 
         def forward_vit_b_16(self, seq_list: List[torch.Tensor]) -> List[torch.Tensor]:
             # discard class tocken
-            seq_list = [seq[:, :196, :] for seq in seq_list]
-            # switch dimensions
-            seq_list = [seq.permute(0, 2, 1) for seq in seq_list]
-            # reconstruct patches
-            seq_list = [torch.reshape(seq, (-1, 768, 14, 14)) for seq in seq_list]
+            seq_list = [seq[:, 1:, :] for seq in seq_list]
+            # reshape
+            seq_list = [
+                seq.reshape(seq.size(0), 14, 14, seq.size(2)) for seq in seq_list
+            ]
+            # bring channels after batch dimension
+            seq_list = [seq.transpose(2, 3).transpose(1, 2) for seq in seq_list]
             return seq_list
 
     def forward(
