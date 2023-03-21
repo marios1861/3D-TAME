@@ -53,9 +53,10 @@ class AD_IC:
                 self.model(masked_images) for masked_images in masked_images_list
             ]
         ]
+
         for AD, IC, new_logits in zip(self.ADs, self.ICs, new_logits_list):
-            AD.update(get_AD(chosen_logits, new_logits))
-            IC.update(get_IC(chosen_logits, new_logits))
+            AD.update(get_AD(chosen_logits, new_logits).item())
+            IC.update(get_IC(chosen_logits, new_logits).item())
 
     def get_results(self) -> Tuple[List[float], List[float]]:
         return [AD() for AD in self.ADs], [IC() for IC in self.ICs]
@@ -219,7 +220,6 @@ def get_masked_inputs(
             .expand(H, W, C, B)
             .permute(*range(masks.ndim - 1, -1, -1))
         )
-
     masks_ls = [masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent]
     x_masked_ls = [mask * inp for mask in masks_ls]
     return x_masked_ls
@@ -258,13 +258,13 @@ def get_AUC(gt_labels, pred_scores):
     return res
 
 
-def get_AD(original_logits: torch.Tensor, new_logits: torch.Tensor) -> float:
+def get_AD(original_logits: torch.Tensor, new_logits: torch.Tensor) -> torch.Tensor:
     AD = ((original_logits - new_logits).clip(min=0) / original_logits).sum() * (
         100 / original_logits.size()[0]
     )
-    return AD.item()
+    return AD
 
 
-def get_IC(original_logits: torch.Tensor, new_logits: torch.Tensor) -> float:
+def get_IC(original_logits: torch.Tensor, new_logits: torch.Tensor) -> torch.Tensor:
     IC = ((new_logits - original_logits) > 0).sum() * (100 / original_logits.size()[0])
-    return IC.item()
+    return IC
