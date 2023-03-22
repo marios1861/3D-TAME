@@ -10,7 +10,6 @@ from pytorch_grad_cam.metrics.road import ROADLeastRelevantFirst, ROADMostReleva
 from pytorch_grad_cam.utils.model_targets import RawScoresOutputTarget
 from sklearn import metrics
 from torch.nn import functional as F
-from torchmetrics import Metric
 
 from .avg_meter import AverageMeter
 

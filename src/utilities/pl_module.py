@@ -107,6 +107,37 @@ class TAMELIT(pl.LightningModule):
             sync_dist=True,
         )
 
+    def on_test_epoch_start(self):
+        self.generic.noisy_masks = False
+
+    def on_test_epoch_end(self):
+        self.generic.noisy_masks = True
+        self.log_dict(
+            {
+                "testing/AD 100%": torch.tensor(self.ADs[0]),
+                "testing/AD 50%": torch.tensor(self.ADs[1]),
+                "testing/AD 15%": torch.tensor(self.ADs[2]),
+            }
+        )
+        self.log_dict(
+            {
+                "testing/IC 100%": torch.tensor(self.ICs[0]),
+                "testing/IC 50%": torch.tensor(self.ICs[1]),
+                "testing/IC 15%": torch.tensor(self.ICs[2]),
+            }
+        )
+        self.log_dict(
+            {
+                "testing/ROAD 10%": torch.tensor(self.ROADs[0]),
+                "testing/ROAD 20%": torch.tensor(self.ROADs[1]),
+                "testing/ROAD 30%": torch.tensor(self.ROADs[2]),
+                "testing/ROAD 40%": torch.tensor(self.ROADs[3]),
+                "testing/ROAD 50%": torch.tensor(self.ROADs[4]),
+                "testing/ROAD 70%": torch.tensor(self.ROADs[5]),
+                "testing/ROAD 90%": torch.tensor(self.ROADs[6]),
+            }
+        )
+
     def test_step(self, batch, batch_idx):
         # this is the test loop
         images, labels = batch
@@ -125,11 +156,8 @@ class TAMELIT(pl.LightningModule):
         masks = masks.squeeze().cpu().detach().numpy()
         self.metric_ROAD(images, model_truth, masks)
 
-        ADs, ICs = self.metric_AD_IC.get_results()
-        ROADs = self.metric_ROAD.get_results()
-        self.log("testing/ADs", torch.tensor(ADs), sync_dist=True)
-        self.log("testing/ICs", torch.tensor(ICs), sync_dist=True)
-        self.log("testing/ROADS", torch.tensor(ROADs), sync_dist=True)
+        self.ADs, self.ICs = self.metric_AD_IC.get_results()
+        self.ROADs = self.metric_ROAD.get_results()
 
     def configure_optimizers(self):
         optimizer = ut.get_optim(self.cfg, self.generic)
