@@ -114,27 +114,27 @@ class TAMELIT(pl.LightningModule):
         self.generic.noisy_masks = True
         self.log_dict(
             {
-                "testing/AD 100%": torch.tensor(self.ADs[0]),
-                "testing/AD 50%": torch.tensor(self.ADs[1]),
-                "testing/AD 15%": torch.tensor(self.ADs[2]),
+                "AD 100%": torch.tensor(self.ADs[0]),
+                "AD 50%": torch.tensor(self.ADs[1]),
+                "AD 15%": torch.tensor(self.ADs[2]),
             }
         )
         self.log_dict(
             {
-                "testing/IC 100%": torch.tensor(self.ICs[0]),
-                "testing/IC 50%": torch.tensor(self.ICs[1]),
-                "testing/IC 15%": torch.tensor(self.ICs[2]),
+                "IC 100%": torch.tensor(self.ICs[0]),
+                "IC 50%": torch.tensor(self.ICs[1]),
+                "IC 15%": torch.tensor(self.ICs[2]),
             }
         )
         self.log_dict(
             {
-                "testing/ROAD 10%": torch.tensor(self.ROADs[0]),
-                "testing/ROAD 20%": torch.tensor(self.ROADs[1]),
-                "testing/ROAD 30%": torch.tensor(self.ROADs[2]),
-                "testing/ROAD 40%": torch.tensor(self.ROADs[3]),
-                "testing/ROAD 50%": torch.tensor(self.ROADs[4]),
-                "testing/ROAD 70%": torch.tensor(self.ROADs[5]),
-                "testing/ROAD 90%": torch.tensor(self.ROADs[6]),
+                "ROAD 10%": torch.tensor(self.ROADs[0]),
+                "ROAD 20%": torch.tensor(self.ROADs[1]),
+                "ROAD 30%": torch.tensor(self.ROADs[2]),
+                "ROAD 40%": torch.tensor(self.ROADs[3]),
+                "ROAD 50%": torch.tensor(self.ROADs[4]),
+                "ROAD 70%": torch.tensor(self.ROADs[5]),
+                "ROAD 90%": torch.tensor(self.ROADs[6]),
             }
         )
 

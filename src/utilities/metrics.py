@@ -73,7 +73,7 @@ class ROAD:
     )
 
     def __post_init__(self):
-        self.target = [RawScoresOutputTarget() for _ in range(32)]
+        self.target = None
         self.metric: List[AverageMeter] = []
         self.roads: List[Union[ROADMostRelevantFirst, ROADLeastRelevantFirst]] = []
         for percentile in self.percent_list:
@@ -87,6 +87,8 @@ class ROAD:
         model_truth: torch.Tensor,
         masks: np.ndarray,
     ):
+        if self.target is None:
+            self.target = [RawScoresOutputTarget() for _ in range(input.size(0))]
         for i in range(len(self.percent_list)):
             scores = self.roads[i](
                 input, masks, self.target, self.model, return_diff=False  # type: ignore
