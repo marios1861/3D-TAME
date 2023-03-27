@@ -153,7 +153,7 @@ class TAttentionV1(AttentionMech):
             0
         ]
         # Reshape
-        class_maps = self.reshape(class_map)
+        class_map = self.reshape(class_map)
         # fuse into 1000 channels
         c = self.cnn_fuser(class_map)  # batch_size x1xWxH
         # activation
@@ -400,8 +400,8 @@ class AttentionMechFactory(object):
         "Noskipconnection": AttentionV3d2dd1,
         "NoskipNobatchnorm": AttentionV3d2,
         "Sigmoidinfeaturebranch": AttentionV5d1,
-        "V1": TAttentionV1,
-        "V2": TAttentionV2,
+        "TAttentionV1": TAttentionV1,
+        "TAttentionV2": TAttentionV2,
     }
 
     @classmethod
@@ -620,9 +620,7 @@ class Arrangement(nn.Module):
         self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
     ) -> torch.Tensor:
         B, C, H, W = masks.size()
-        indexes = labels.expand(H, W, 1, B).permute(
-            *torch.arange(masks.ndim - 1, -1, -1)  # type: ignore
-        )
+        indexes = labels.expand(H, W, 1, B).transpose(0, 3).transpose(1, 2)
         masks = torch.gather(masks, 1, indexes)  # select masks
         masks = F.interpolate(
             masks, size=(224, 224), mode="bilinear", align_corners=False

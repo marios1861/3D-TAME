@@ -6,7 +6,7 @@ import os
 os.environ["MASTER_ADDR"] = "160.40.53.85"
 os.environ["MASTER_PORT"] = "12345"
 os.environ["WORLD_SIZE"] = "3"
-
+torch.set_float32_matmul_precision("medium")
 model = TAMELIT(
     model_name="vit_b_16",
     layers=[
@@ -14,12 +14,12 @@ model = TAMELIT(
         "encoder.layers.encoder_layer_10",
         "encoder.layers.encoder_layer_11",
     ],
-    attention_version="V1",
+    attention_version="TAttentionV1",
     schedule="NEW",
     lr=0.0001,
     epochs=8,
 )
-compiled_model: pl.LightningModule = torch.compile(model)  # type: ignore
+# compiled_model: pl.LightningModule = torch.compile(model)  # type: ignore
 
 dataset = LightnightDataset(
     dataset_path=Path("/home/marios/Documents/imagenet-1k"),
@@ -27,7 +27,7 @@ dataset = LightnightDataset(
     model="vit_b_16",
     batch_size=64,
 )
-
+# torch._dynamo.config.verbose=True
 trainer = pl.Trainer(
     accelerator="gpu",
     num_nodes=3,
@@ -35,8 +35,9 @@ trainer = pl.Trainer(
     precision="16-mixed",
     accumulate_grad_batches=4,
     gradient_clip_algorithm="norm",
+    max_epochs=8,
 )
 
-trainer.fit(compiled_model, dataset)
+trainer.fit(model, dataset)
 
-trainer.test(compiled_model, dataset)
+trainer.test(model, dataset)
