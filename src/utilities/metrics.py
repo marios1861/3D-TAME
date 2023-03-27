@@ -14,21 +14,16 @@ from torch.nn import functional as F
 from .avg_meter import AverageMeter
 
 
-# class pl_ADIC(Metric):
-
-
 @dataclass
 class AD_IC:
     model: torch.nn.Module
     img_size: int
     percent_list: List[float] = field(default_factory=lambda: [0.0, 0.5, 0.85])
     noisy_masks: bool = False
-    ADs: List[AverageMeter] = field(default_factory=list)
-    ICs: List[AverageMeter] = field(default_factory=list)
 
     def __post_init__(self):
-        self.ADs = [AverageMeter(type="avg") for _ in self.percent_list]
-        self.ICs = [AverageMeter(type="avg") for _ in self.percent_list]
+        self.chosen_logits_list = []
+        self.new_logits_list = []
 
     @torch.no_grad()
     def __call__(
@@ -45,20 +40,30 @@ class AD_IC:
             self.percent_list,
             self.noisy_masks,
         )
-
         new_logits_list = [
             new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
             for new_logits in [
                 self.model(masked_images) for masked_images in masked_images_list
             ]
         ]
-
-        for AD, IC, new_logits in zip(self.ADs, self.ICs, new_logits_list):
-            AD.update(get_AD(chosen_logits, new_logits).item())
-            IC.update(get_IC(chosen_logits, new_logits).item())
+        self.chosen_logits_list.append(chosen_logits.cpu())
+        if self.new_logits_list == []:
+            self.new_logits_list = [[new_logits.cpu()] for new_logits in new_logits_list]
+        else:
+            for new_logits, old_new_logits in zip(new_logits_list, self.new_logits_list):
+                old_new_logits.append(new_logits.cpu())
 
     def get_results(self) -> Tuple[List[float], List[float]]:
-        return [AD() for AD in self.ADs], [IC() for IC in self.ICs]
+        metrics = []
+        chosen_logits = torch.cat(self.chosen_logits_list)
+        for new_logits in self.new_logits_list:
+            metrics.append(
+                (
+                    get_AD(chosen_logits, torch.cat(new_logits)).item(),
+                    get_IC(chosen_logits, torch.cat(new_logits)).item(),
+                )
+            )
+        return [metric[0] for metric in metrics], [metric[1] for metric in metrics]
 
 
 @dataclass

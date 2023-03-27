@@ -7,6 +7,7 @@ Usage:
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 import traceback
+import numpy
 
 import pandas as pd
 import torch
@@ -49,6 +50,13 @@ def run(
     percent_list: List[float] = [0.0, 0.5, 0.85],
     example_gen: Optional[int] = None,
 ) -> Tuple[List[float], List[float]]:
+    use_cuda = True
+    if name == "scorecam":
+        use_cuda = False
+        if "resnet" in cfg["model"]:
+            cfg["batch_size"] = 1
+        else:
+            cfg["batch_size"] = 1
     # Dataloader
     dataloader = utils.data_loader(cfg)[2]
     if "vit" in cfg["model"]:
@@ -90,17 +98,6 @@ def run(
     else:
         target_layers = [model[1].features[29]]  # type: ignore
 
-    if name == "scorecam":
-        use_cuda = True
-    else:
-        use_cuda = True
-
-    if name == "scorecam":
-        if "resnet" in cfg["model"]:
-            cfg["batch_size"] = 4
-        else:
-            cfg["batch_size"] = 16
-
     if name == "ablationcam":
         if "vit" in cfg["model"]:
             cam_model = cam_method[name](
@@ -125,6 +122,9 @@ def run(
             use_cuda=use_cuda,
         )
 
+    if name == "scorecam" or name == "ablationcam":
+        cam_model.batch_size = 8  # type: ignore
+
     if example_gen is not None:
         image, _ = dataloader.dataset[example_gen]
         image = image.unsqueeze(0)
@@ -133,7 +133,7 @@ def run(
         save_heatmap(
             mask,
             image,
-            Path("evaluation data") / "examples" / f"grad_{name}_{example_gen}.jpg",
+            Path("evaluation_data") / "examples" / f"grad_{name}_{example_gen}.jpg",
         )
         quit()
 
@@ -149,6 +149,9 @@ def run(
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
         masks = cam_model(input_tensor=images)  # type: ignore
+        if numpy.isnan(masks).any():
+            print("NaNs in masks")
+            quit()
         # disable road temporarily
         metric_ROAD(images, model_truth, masks)
         if use_cuda:
