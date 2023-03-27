@@ -5,7 +5,7 @@ Usage:
     $ python -m tame.train --cfg resnet50_SGD.yaml --epoch -1
 """
 
-from pytorch_lightning.cli import LightningCLI
+from lightning.pytorch.cli import LightningCLI
 import torch
 
 from utilities.pl_module import TAMELIT, LightnightDataset

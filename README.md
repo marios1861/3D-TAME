@@ -38,6 +38,9 @@ pip install -r requirements.txt
 
 > __Note__: you may have to install the libraries torch and torchvision separately. Follow the pip instructions [here](https://pytorch.org/get-started/locally/). Also, make sure you have a working matplotlib GUI backend (such as qt with `pip install PyQt6`).
 
+> __Note__: You may need to modify the venv activate script in the case that cuda is already installed in your machine. If so, add this line:
+> `export LD_LIBRARY_PATH=.../venv/lib/python3.8/site-packages/nvidia/cublas/lib/:$LD_LIBRARY_PATH`
+
 ## Available scripts
 
 You can evaluate the attention mechanism trained on vit on the 7th epoch

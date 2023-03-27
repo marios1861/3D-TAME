@@ -400,6 +400,8 @@ class AttentionMechFactory(object):
         "Noskipconnection": AttentionV3d2dd1,
         "NoskipNobatchnorm": AttentionV3d2,
         "Sigmoidinfeaturebranch": AttentionV5d1,
+        "V1": TAttentionV1,
+        "V2": TAttentionV2,
     }
 
     @classmethod

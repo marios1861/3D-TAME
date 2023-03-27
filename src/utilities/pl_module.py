@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List, Optional
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torch
 from torch.utils.data import DataLoader
 import torchmetrics

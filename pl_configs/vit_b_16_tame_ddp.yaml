@@ -2,6 +2,11 @@ trainer.strategy:
   class_path: pytorch_lightning.strategies.DDPStrategy
   init_args:
     find_unused_parameters: false
+# trainer.logger:
+#   class_path: pytorch_lightning.loggers.CSVLogger
+#   init_args:
+#     save_dir: "evaluation data"
+#     name: "vit_b_16"
 model:
   model_name: vit_b_16
   layers:
