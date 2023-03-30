@@ -1,4 +1,5 @@
 from pathlib import Path
+from lightning.pytorch.loggers import CSVLogger
 import lightning.pytorch as pl
 import torch
 from utilities.pl_module import TAMELIT, LightnightDataset
@@ -16,7 +17,7 @@ model = TAMELIT(
     ],
     attention_version="TAttentionV1",
     schedule="NEW",
-    lr=0.0001,
+    lr=0.001,
     epochs=8,
 )
 # compiled_model: pl.LightningModule = torch.compile(model)  # type: ignore
@@ -40,4 +41,9 @@ trainer = pl.Trainer(
 
 trainer.fit(model, dataset)
 
-trainer.test(model, dataset)
+if os.environ["NODE_RANK"] == "0":
+    tester = pl.Trainer(
+        accelerator="gpu",
+        logger=CSVLogger("logs", name="vit_b_16_run_2_ddp_v1"),
+    )
+    tester.test(model, dataset)
