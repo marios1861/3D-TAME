@@ -7,7 +7,6 @@ Usage:
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 import traceback
-import numpy
 
 import pandas as pd
 import torch
@@ -128,8 +127,10 @@ def run(
     if example_gen is not None:
         image, _ = dataloader.dataset[example_gen]
         image = image.unsqueeze(0)
-        mask = torch.tensor(cam_model(input_tensor=image))
+        mask = torch.tensor(cam_model(input_tensor=image)).unsqueeze(dim=1)
+        masks = metrics.normalizeMinMax(mask)
         image = image.squeeze()
+        mask = mask.squeeze()
         save_heatmap(
             mask,
             image,
@@ -149,16 +150,12 @@ def run(
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
         masks = cam_model(input_tensor=images)  # type: ignore
-        if numpy.isnan(masks).any():
+        masks = metrics.normalizeMinMax(torch.from_numpy(masks).cuda().unsqueeze(dim=1))
+        if torch.isnan(masks).any():
             print("NaNs in masks")
             quit()
-        # disable road temporarily
-        metric_ROAD(images, model_truth, masks)
-        if use_cuda:
-            masks = torch.tensor(masks).cuda().unsqueeze(dim=1)
-        else:
-            masks = torch.tensor(masks).unsqueeze(dim=1)
         metric_AD_IC(images, chosen_logits, model_truth, masks)
+        metric_ROAD(images, model_truth, masks.squeeze().cpu().detach().numpy())
 
     ADs, ICs = metric_AD_IC.get_results()
     ROADs = metric_ROAD.get_results()

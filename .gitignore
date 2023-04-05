@@ -12,7 +12,8 @@ doodle.ipynb
 /LR
 *.csv
 *.egg-info
-evaluation data/
+evaluation_data/
 .tb_logs/
 lightning_logs
 ddp_run.sh
+hparams.yaml
