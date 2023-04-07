@@ -51,11 +51,10 @@ def run(
 ) -> Tuple[List[float], List[float]]:
     use_cuda = True
     if name == "scorecam":
-        use_cuda = False
         if "resnet" in cfg["model"]:
             cfg["batch_size"] = 1
         else:
-            cfg["batch_size"] = 1
+            cfg["batch_size"] = 4
     # Dataloader
     dataloader = utils.data_loader(cfg)[2]
     if "vit" in cfg["model"]:
@@ -134,7 +133,7 @@ def run(
         save_heatmap(
             mask,
             image,
-            Path("evaluation_data") / "examples" / f"grad_{name}_{example_gen}.jpg",
+            Path("evaluation_data") / "examples" / f"grad_{cfg['model']}_{name}_{example_gen}.jpg",
         )
         quit()
 

@@ -46,6 +46,7 @@ class TAMELIT(pl.LightningModule):
             epochs,
         )
         self.generic = ut.get_model(self.cfg)
+        self.attention_version = attention_version
 
         # threshold is 0 because we use un-normalized logits to save on computation time
         self.accuracy = torchmetrics.Accuracy(

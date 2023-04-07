@@ -124,12 +124,47 @@ def run(
     return [*ADs, *ICs], ROADs
 
 
+@torch.no_grad()
+def gen_mask(example_gen, cfg, args):
+    # load data
+    dataloader = utils.data_loader(cfg)[2]
+    # load model
+    model = utils.TAMELIT.load_from_checkpoint(cfg["path"]).eval()
+    name = model.attention_version
+    model = model.generic
+
+    image, _ = dataloader.dataset[example_gen]
+    image = image.unsqueeze(0)
+
+    logits: torch.Tensor = model.cpu()(image)
+    logits = logits.softmax(dim=1)
+    chosen_logits, model_truth = logits.max(dim=1)
+    mask = model.get_c(model_truth)
+    mask = metrics.normalizeMinMax(mask)
+    mask = torch.nn.functional.interpolate(
+        mask,
+        size=(224, 224),
+        mode="bilinear",
+        align_corners=False,
+    ).squeeze()
+    image = image.squeeze()
+    save_heatmap(
+        mask,
+        image,
+        Path("evaluation_data")
+        / "examples"
+        / f"{cfg['model']}_{name}_{example_gen}.jpg",
+    )
+
+
 def main(args):
     print("Running parameters:\n")
     print(yaml.dump(args, indent=4))
     cfg = utils.load_config(args["cfg"])
     print(yaml.dump(cfg, indent=4))
-
+    if args["example_gen"] is not None:
+        gen_mask(args["example_gen"], cfg, args)
+        quit()
     adic_data = []
     road_data = []
     if not args.get("epoch"):
@@ -167,4 +202,6 @@ def main(args):
     road_data = pd.DataFrame(
         road_data, index=index, columns=[10, 20, 30, 40, 50, 70, 90]
     )
-    road_data.to_csv(f"evaluation data/{prefix}{args['cfg']}_road.csv", float_format="%.2f")
+    road_data.to_csv(
+        f"evaluation data/{prefix}{args['cfg']}_road.csv", float_format="%.2f"
+    )
