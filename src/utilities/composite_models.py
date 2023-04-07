@@ -63,7 +63,7 @@ class TAttentionV2_1(AttentionMech):
         feature_maps = features
         # Multihead Attention
         class_maps = [
-            op(feature, need_weights=False)
+            op(feature, feature, feature, need_weights=False)[0]
             for op, feature in zip(self.mhas, feature_maps)
         ]
         # layer norm
@@ -131,7 +131,7 @@ class TAttentionV2(AttentionMech):
         feature_maps = features
         # Multihead Attention
         class_maps = [
-            op(feature, need_weights=False)
+            op(feature, feature, feature, need_weights=False)[0]
             for op, feature in zip(self.mhas, feature_maps)
         ]
         # layer norm
