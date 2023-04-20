@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from PIL import Image
 from torchvision import transforms
 
-import utilities.metrics as metrics
+from .utilities import metrics
 
 __all__ = ["main", "save_heatmap"]
 

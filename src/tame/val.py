@@ -15,9 +15,9 @@ from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 from torchvision import transforms
 from tqdm import tqdm
 
-import utilities as utils
-from masked_print import save_heatmap
-from utilities import metrics
+from . import utilities as utils
+from .masked_print import save_heatmap
+from .utilities import metrics
 
 
 @torch.no_grad()

@@ -10,11 +10,11 @@ from typing import Any, Dict, List, Tuple
 import torch
 from torch.cuda import amp
 from tqdm.auto import tqdm
-from utilities.utilities import get_project_root
+from .utilities.proj_utilities import get_project_root
 import yaml
 
-import utilities as utils
-from utilities import AverageMeter
+from . import utilities as utils
+from .utilities import AverageMeter
 
 
 def find_lr(cfg: Dict[str, Any], args: Dict[str, Any]

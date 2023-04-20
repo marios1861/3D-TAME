@@ -1,9 +1,9 @@
 import argparse
-import lr_finder
-import val
-import old_train as train
-import other_methods_vit as other
-import transformer_explainability_val as hila
+from . import lr_finder
+from . import val
+from . import old_train as train
+from . import other_methods_vit as other
+from . import transformer_explainability_val as hila
 
 
 def parse_train(parser: argparse.ArgumentParser):
@@ -152,4 +152,7 @@ def main():
     parse_lr(lr_parser)
 
     args = parser.parse_args()
-    args.func(vars(args))
+    if hasattr(args, "func"):
+        args.func(vars(args))
+    else:
+        parser.print_help()

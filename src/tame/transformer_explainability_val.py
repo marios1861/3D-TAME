@@ -14,13 +14,13 @@ from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 from torchvision import transforms
 from tqdm import tqdm
 
-import utilities as utils
-from masked_print import save_heatmap
-from transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
-from transformer_explainability.baselines.ViT.ViT_LRP import (
+from . import utilities as utils
+from .masked_print import save_heatmap
+from .transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
+from .transformer_explainability.baselines.ViT.ViT_LRP import (
     vit_base_patch16_224 as vit_LRP,
 )
-from utilities import metrics
+from .utilities import metrics
 
 
 def reshape_transform(tensor, height=14, width=14):

@@ -8,7 +8,7 @@ Usage:
 from lightning.pytorch.cli import LightningCLI
 import torch
 
-from utilities.pl_module import TAMELIT, LightnightDataset
+from .utilities.pl_module import TAMELIT, LightnightDataset
 
 
 class MyLightningCLI(LightningCLI):

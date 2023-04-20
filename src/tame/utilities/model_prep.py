@@ -85,7 +85,7 @@ def get_schedule(
     currect_epoch: int,
     steps_per_epoch: Optional[int] = None,
     total_steps: Optional[int] = None,
-) -> lr._LRScheduler:
+) -> lr.LRScheduler:
     if cfg["schedule"] == "NEW":
         schedule = lr.OneCycleLR(  # type: ignore
             optimizer,

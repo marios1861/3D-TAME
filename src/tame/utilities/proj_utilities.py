@@ -16,4 +16,4 @@ def load_config(cfg: str) -> Dict[str, Any]:
 
 
 def get_project_root() -> Path:
-    return Path(__file__).parents[2]
+    return Path(__file__).parents[3]

@@ -8,9 +8,9 @@ import torchmetrics
 import torchvision.transforms as transforms
 from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 
-import utilities as ut
-from utilities import metrics
-from utilities.load_data import MyDataset
+from tame import utilities as ut
+from . import metrics
+from .load_data import MyDataset
 
 
 # define the LightningModule

@@ -14,9 +14,9 @@ from torch.cuda import amp
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
-import utilities as utils
-import val
-from utilities import AverageMeter, metrics
+from . import utilities as utils
+from . import val
+from .utilities import AverageMeter, metrics
 
 
 def train(cfg: Dict[str, Any], args: Dict[str, Any]):

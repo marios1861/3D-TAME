@@ -3,7 +3,7 @@ from .composite_models import Generic
 from .load_data import data_loader
 from .model_prep import get_model, get_optim, get_schedule, model_prep, pl_get_config
 from .restore import load_model, save_model
-from .utilities import get_project_root, load_config
+from .proj_utilities import get_project_root, load_config
 from .pl_module import TAMELIT, LightnightDataset
 
 __all__ = [

@@ -1,27 +1,36 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "tame"
-version = "0.0.1"
-dependencies = [
-    "matplotlib",
-    'numpy',
-    "opencv_python",
-    "Pillow",
-    "scikit_learn",
-    "torch",
-    "torchvision",
-    "tqdm",
-    "pyyaml",
-    "pandas",
-    "einops",
-    "grad-cam",
-    "timm",
-    "typing_extensions"
+version = "0.1.0"
+description = ""
+authors = [
+    "marios1861 <44480600+marios1861@users.noreply.github.com>",
 ]
+readme = "README.md"
 
-[project.scripts]
-"tame" = "scripts:main"
-"tame-auto" = "train:cli_main"
+[tool.poetry.dependencies]
+python = "^3.8"
+matplotlib = "^3.7.1"
+numpy = "^1.24.2"
+opencv-python = "^4.7.0.72"
+Pillow = "^9.5.0"
+scikit-learn = "^1.2.2"
+torch = "^2.0.0"
+torchvision = "^0.15.1"
+tqdm = "^4.65.0"
+PyYAML = "^6.0"
+pandas = "^2.0.0"
+lightning = "^2.0.1.post0"
+grad-cam = "^1.4.6"
+torchmetrics = "^0.11.4"
+einops = "^0.6.1"
+fastapi  = ">0.80"
+tensorboard = "^2.12.2"
+timm = "^0.6.13"
+
+[tool.poetry.scripts]
+tame = 'tame.scripts:main'
+tame-auto = 'tame.train:cli_main'
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

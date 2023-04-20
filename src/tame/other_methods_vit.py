@@ -10,7 +10,7 @@ import traceback
 
 import pandas as pd
 import torch
-from utilities.model_prep import model_prep
+from .utilities.model_prep import model_prep
 import yaml
 from pytorch_grad_cam import (
     AblationCAM,
@@ -28,9 +28,9 @@ from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 from torchvision import transforms
 from tqdm import tqdm
 
-import utilities as utils
-from masked_print import save_heatmap
-from utilities import metrics
+from . import utilities as utils
+from .masked_print import save_heatmap
+from .utilities import metrics
 
 
 def reshape_transform(tensor, height=14, width=14):
