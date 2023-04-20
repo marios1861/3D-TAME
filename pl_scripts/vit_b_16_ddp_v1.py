@@ -2,7 +2,7 @@ from pathlib import Path
 from lightning.pytorch.loggers import CSVLogger
 import lightning.pytorch as pl
 import torch
-from utilities.pl_module import TAMELIT, LightnightDataset
+from tame.utilities.pl_module import TAMELIT, LightnightDataset
 import os
 os.environ["MASTER_ADDR"] = "160.40.53.85"
 os.environ["MASTER_PORT"] = "12345"
