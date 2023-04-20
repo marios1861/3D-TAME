@@ -658,7 +658,7 @@ class Generic(nn.Module):
     def forward(
         self, x: torch.Tensor, label: Optional[torch.LongTensor] = None
     ) -> torch.Tensor:
-        x_norm = Generic.normalization(x)
+        x_norm = x
 
         features: Dict[str, torch.Tensor] = self.body(x_norm)
         x_norm = features.pop(self.output)

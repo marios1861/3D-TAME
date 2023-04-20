@@ -65,7 +65,7 @@ def run(
         raw_model = model_prep(cfg["model"])
 
     raw_model.eval()
-    normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    normalize = torch.nn.Identity()
     model = torch.nn.Sequential(
         normalize,
         raw_model

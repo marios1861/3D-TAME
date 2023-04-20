@@ -31,6 +31,10 @@ timm = "^0.6.13"
 tame = 'tame.scripts:main'
 tame-auto = 'tame.train:cli_main'
 
+[tool.poetry.group.dev.dependencies]
+torch-tb-profiler = "^0.4.1"
+black = "^23.3.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
