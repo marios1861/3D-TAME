@@ -10,3 +10,10 @@
 doodle.ipynb
 /snapshots
 /LR
+*.csv
+*.egg-info
+evaluation_data/
+.tb_logs/
+lightning_logs
+ddp_run.sh
+hparams.yaml
