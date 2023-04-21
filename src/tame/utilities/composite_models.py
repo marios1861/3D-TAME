@@ -78,7 +78,7 @@ class TAttentionV2_1(AttentionMech):
         # Reshape
         class_maps = [self.reshape(class_map) for class_map in class_maps]
         # Concat
-        class_map = torch.cat(class_maps, 2)
+        class_map = torch.cat(class_maps, 1)
         # fuse into 1000 channels
         c = self.cnn_fuser(class_map)  # batch_size x1xWxH
         # activation
@@ -146,7 +146,7 @@ class TAttentionV2(AttentionMech):
         # Reshape
         class_maps = [self.reshape(class_map) for class_map in class_maps]
         # Concat
-        class_map = torch.cat(class_maps, 2)
+        class_map = torch.cat(class_maps, 1)
         # fuse into 1000 channels
         c = self.cnn_fuser(class_map)  # batch_size x1xWxH
         # activation
