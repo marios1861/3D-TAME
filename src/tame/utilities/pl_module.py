@@ -206,6 +206,7 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.RandomCrop(self.crop_size),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
             ]
         )
         dataset_train = MyDataset(
@@ -229,6 +230,7 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Resize(self.input_size),
                 transforms.CenterCrop(self.crop_size),
                 transforms.ToTensor(),
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
             ]
         )
 
@@ -252,6 +254,7 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Resize(self.input_size),
                 transforms.CenterCrop(self.crop_size),
                 transforms.ToTensor(),
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
             ]
         )
 
