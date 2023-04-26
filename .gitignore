@@ -17,3 +17,4 @@ evaluation_data/
 lightning_logs
 ddp_run.sh
 hparams.yaml
+.env

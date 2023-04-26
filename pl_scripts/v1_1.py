@@ -1,9 +1,15 @@
+import os
 from pathlib import Path
-from lightning.pytorch.loggers import CSVLogger
+
 import lightning.pytorch as pl
 import torch
+from dotenv import load_dotenv
+from lightning.pytorch.loggers import CSVLogger
+
 from tame.utilities.pl_module import TAMELIT, LightnightDataset
-import os
+
+load_dotenv()
+
 os.environ["MASTER_ADDR"] = "160.40.53.85"
 os.environ["MASTER_PORT"] = "12345"
 os.environ["WORLD_SIZE"] = "3"
@@ -23,8 +29,8 @@ model = TAMELIT(
 # compiled_model: pl.LightningModule = torch.compile(model)  # type: ignore
 
 dataset = LightnightDataset(
-    dataset_path=Path("/home/marios/Documents/imagenet-1k"),
-    datalist_path=Path("/home/marios/Documents/T-TAME/datalist/ILSVRC"),
+    dataset_path=Path(os.getenv("DATA", "./")),
+    datalist_path=Path(os.getenv("LIST", "./")),
     model="vit_b_16",
     batch_size=64,
 )
