@@ -4,7 +4,6 @@ from typing import ClassVar, Dict, List, Optional, Tuple, Type
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import transforms
 from torchvision.models.feature_extraction import (
     create_feature_extractor,
     get_graph_node_names,
@@ -562,7 +561,6 @@ class AttentionMechFactory(object):
 
 
 class Generic(nn.Module):
-    normalization = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
     def __init__(
         self,
@@ -770,6 +768,5 @@ class Arrangement(nn.Module):
         masks = F.interpolate(
             masks, size=(224, 224), mode="bilinear", align_corners=False
         )
-        x_masked = masks * inp
-        x_norm = Generic.normalization(x_masked)
+        x_norm = masks * inp
         return self.body(x_norm)[self.output_name]
