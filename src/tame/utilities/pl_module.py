@@ -116,19 +116,11 @@ class TAMELIT(pl.LightningModule):
         self.log_dict(
             {
                 "AD 100%": torch.tensor(self.ADs[0]),
-                "AD 50%": torch.tensor(self.ADs[1]),
-                "AD 15%": torch.tensor(self.ADs[2]),
-            }
-        )
-        self.log_dict(
-            {
                 "IC 100%": torch.tensor(self.ICs[0]),
+                "AD 50%": torch.tensor(self.ADs[1]),
                 "IC 50%": torch.tensor(self.ICs[1]),
+                "AD 15%": torch.tensor(self.ADs[2]),
                 "IC 15%": torch.tensor(self.ICs[2]),
-            }
-        )
-        self.log_dict(
-            {
                 "ROAD 10%": torch.tensor(self.ROADs[0]),
                 "ROAD 20%": torch.tensor(self.ROADs[1]),
                 "ROAD 30%": torch.tensor(self.ROADs[2]),
