@@ -617,7 +617,7 @@ class Generic(nn.Module):
 
         # Get loss and forward training method
         self.arr = "1-1"
-        arrangement = Arrangement("1-1", self.body, self.output)
+        arrangement = Arrangement("1-1", self.body, self.output, noisy_masks=noisy_masks)
         self.train_policy, self.get_loss = (arrangement.train_policy, arrangement.loss)
 
         self.a: Optional[torch.Tensor] = None
@@ -703,7 +703,7 @@ class Generic(nn.Module):
 class Arrangement(nn.Module):
     r"""The train_policy and get_loss components of Generic"""
 
-    def __init__(self, version: str, body: nn.Module, output_name: str):
+    def __init__(self, version: str, body: nn.Module, output_name: str, noisy_masks=True):
         super(Arrangement, self).__init__()
         arrangements = {"1-1": (self.train_policy1, self.loss1)}
 
@@ -711,10 +711,16 @@ class Arrangement(nn.Module):
         self.body = body
         self.output_name = output_name
 
-        self.ce_coeff = 1.5  # lambda3
-        self.area_loss_coeff = 2  # lambda2
-        self.smoothness_loss_coeff = 0.01  # lambda1
-        self.area_loss_power = 0.3  # lambda4
+        if noisy_masks:
+            self.ce_coeff = 1.5  # lambda3
+            self.area_loss_coeff = 2  # lambda2
+            self.smoothness_loss_coeff = 0.01  # lambda1
+            self.area_loss_power = 0.3  # lambda4
+        else:
+            self.ce_coeff = 1.7  # lambda3
+            self.area_loss_coeff = 1.5  # lambda2
+            self.smoothness_loss_coeff = 0.1  # lambda1
+            self.area_loss_power = 0.3  # lambda4
 
         self.extra_masks = None
         self.train_policy, self.loss = arrangements[version]
