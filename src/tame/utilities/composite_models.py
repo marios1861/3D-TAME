@@ -617,7 +617,7 @@ class Generic(nn.Module):
 
         # Get loss and forward training method
         self.arr = "1-1"
-        arrangement = Arrangement("1-1", self.body, self.output, noisy_masks=noisy_masks)
+        arrangement = Arrangement("1-1", self.body, self.output)
         self.train_policy, self.get_loss = (arrangement.train_policy, arrangement.loss)
 
         self.a: Optional[torch.Tensor] = None
