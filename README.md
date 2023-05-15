@@ -9,34 +9,23 @@
 
 ## Initial Setup
 
-Make sure that you have a working git, cuda, Python 3 and pip installation before proceeding.
+Make sure that you have a working git, Python 3 and poetry installation before proceeding.
 
 - Clone this repository:
 
 ```commandline
-git clone https://github.com/bmezaris/TAME
+git clone git@github.com:marios1861/T-TAME.git
 ```
 
 - Go to the locally saved repository path:
 
 ```commandline
-cd TAME
+cd T-TAME
 ```
 
-- Create and activate a virtual environment:
+- Install:
 
-```commandline
-python3 -m venv ./venv
-. ./venv/bin/activate
-```
-
-- Install project requirements:
-
-```commandline
-pip install -r requirements.txt
-```
-
-> __Note__: you may have to install the libraries torch and torchvision separately. Follow the pip instructions [here](https://pytorch.org/get-started/locally/). Also, make sure you have a working matplotlib GUI backend (such as qt with `pip install PyQt6`).
+poetry install
 
 > __Note__: You may need to modify the venv activate script in the case that cuda is already installed in your machine. If so, add this line:
 > `export LD_LIBRARY_PATH=.../venv/lib/python3.8/site-packages/nvidia/cublas/lib/:$LD_LIBRARY_PATH`
