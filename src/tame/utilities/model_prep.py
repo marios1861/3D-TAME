@@ -77,31 +77,46 @@ def get_optim(
             )
         else:
             raise NotImplementedError(f'Optimizer {cfg["optimizer"]} not implemented.')
+
+        # add g0 with weight_decay
+        optimizer.add_param_group({"params": g[0], "weight_decay": cfg["decay"]})
+        # add g1 (BatchNorm2d weights)
+        optimizer.add_param_group({"params": g[1], "weight_decay": 0.0})
     else:
         if cfg["optimizer"] == "Adam":
             # adjust beta1 to momentum
-            optimizer = SAM(g[2], optim.Adam, lr=1e-7, betas=(cfg["momentum"], 0.999))
+            optimizer = SAM(
+                model.attn_mech.parameters(),
+                optim.Adam,
+                lr=1e-7,
+                betas=(cfg["momentum"], 0.999),
+            )
         elif cfg["optimizer"] == "AdamW":
             optimizer = SAM(
-                g[2],
+                model.attn_mech.parameters(),
                 optim.AdamW,
                 lr=1e-7,
                 betas=(cfg["momentum"], 0.999),
                 weight_decay=0.0,
             )
         elif cfg["optimizer"] == "RMSProp":
-            optimizer = SAM(g[2], optim.RMSprop, lr=1e-7, momentum=cfg["momentum"])
+            optimizer = SAM(
+                model.attn_mech.parameters(),
+                optim.RMSprop,
+                lr=1e-7,
+                momentum=cfg["momentum"],
+            )
         elif cfg["optimizer"] == "SGD":
             optimizer = SAM(
-                g[2], optim.SGD, lr=1e-7, momentum=cfg["momentum"], nesterov=True
+                model.attn_mech.parameters(),
+                optim.SGD,
+                lr=1e-7,
+                momentum=cfg["momentum"],
+                nesterov=True,
             )
         else:
             raise NotImplementedError(f'Optimizer {cfg["optimizer"]} not implemented.')
 
-    # add g0 with weight_decay
-    optimizer.add_param_group({"params": g[0], "weight_decay": cfg["decay"]})
-    # add g1 (BatchNorm2d weights)
-    optimizer.add_param_group({"params": g[1], "weight_decay": 0.0})
     return optimizer
 
 

@@ -40,7 +40,7 @@ trainer = pl.Trainer(
     accelerator="gpu",
     num_nodes=3,
     strategy="ddp",
-    precision="16-mixed",
+    # precision="16-mixed",
     max_epochs=8,
 )
 

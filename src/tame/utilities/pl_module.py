@@ -95,13 +95,13 @@ class TAMELIT(pl.LightningModule):
             assert isinstance(optimizer, SAM)
             assert isinstance(sch, torch.optim.lr_scheduler.OneCycleLR)
             # step 1
-            self.manual_backward(loss, optimizer)
+            self.manual_backward(loss)
             optimizer.first_step(zero_grad=True)
             # step 2
             logits = self.generic(images, labels)
             masks = self.generic.get_a(labels)
             loss_2 = self.generic.get_loss(logits, labels, masks)[0]
-            self.manual_backward(loss_2 , optimizer)
+            self.manual_backward(loss_2)
             optimizer.second_step(zero_grad=True)
             sch.step()  # type: ignore
 
