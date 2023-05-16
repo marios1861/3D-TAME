@@ -41,8 +41,6 @@ trainer = pl.Trainer(
     num_nodes=3,
     strategy="ddp",
     precision="16-mixed",
-    accumulate_grad_batches=4,
-    gradient_clip_algorithm="norm",
     max_epochs=8,
 )
 

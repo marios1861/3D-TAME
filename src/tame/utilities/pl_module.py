@@ -91,7 +91,9 @@ class TAMELIT(pl.LightningModule):
         )
         if self.use_sam:
             optimizer = self.optimizers()
+            sch = self.lr_schedulers()
             assert isinstance(optimizer, SAM)
+            assert isinstance(sch, torch.optim.lr_scheduler.OneCycleLR)
             # step 1
             self.manual_backward(loss, optimizer)
             optimizer.first_step(zero_grad=True)
@@ -101,6 +103,7 @@ class TAMELIT(pl.LightningModule):
             loss_2 = self.generic.get_loss(logits, labels, masks)[0]
             self.manual_backward(loss_2 , optimizer)
             optimizer.second_step(zero_grad=True)
+            sch.step()  # type: ignore
 
         return {"loss": loss, "ce": ce, "mean": mean_mask, "var": var}
 
