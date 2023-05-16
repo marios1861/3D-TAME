@@ -3,12 +3,14 @@ from typing import List, Optional
 
 import lightning.pytorch as pl
 import torch
-from torch.utils.data import DataLoader
 import torchmetrics
 import torchvision.transforms as transforms
 from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
+from torch.utils.data import DataLoader
 
 from tame import utilities as ut
+from tame.utilities.sam import SAM
+
 from . import metrics
 from .load_data import MyDataset
 
@@ -22,6 +24,7 @@ class TAMELIT(pl.LightningModule):
         attention_version: str = "TAME",
         noisy_masks: bool = True,
         optimizer: str = "SGD",
+        use_sam: bool = False,
         momentum: float = 0.9,
         decay: float = 5.0e-4,
         schedule: str = "NEW",
@@ -59,6 +62,9 @@ class TAMELIT(pl.LightningModule):
         self.metric_ROAD = metrics.ROAD(self.generic, ROADMostRelevantFirst)
         self.generic.requires_grad_(False)
         self.generic.attn_mech.requires_grad_()
+        self.use_sam = use_sam
+        if use_sam:
+            self.automatic_optimization = False
 
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
@@ -83,6 +89,19 @@ class TAMELIT(pl.LightningModule):
             },
             sync_dist=True,
         )
+        if self.use_sam:
+            optimizer = self.optimizers()
+            assert isinstance(optimizer, SAM)
+            # step 1
+            self.manual_backward(loss, optimizer)
+            optimizer.first_step(zero_grad=True)
+            # step 2
+            logits = self.generic(images, labels)
+            masks = self.generic.get_a(labels)
+            loss_2 = self.generic.get_loss(logits, labels, masks)[0]
+            self.manual_backward(loss_2 , optimizer)
+            optimizer.second_step(zero_grad=True)
+
         return {"loss": loss, "ce": ce, "mean": mean_mask, "var": var}
 
     def validation_step(self, batch, batch_idx):
@@ -153,7 +172,7 @@ class TAMELIT(pl.LightningModule):
         self.ROADs = self.metric_ROAD.get_results()
 
     def configure_optimizers(self):
-        optimizer = ut.get_optim(self.cfg, self.generic)
+        optimizer = ut.get_optim(self.cfg, self.generic, self.use_sam)
         # the total steps are divided between num_nodes
         scheduler = ut.get_schedule(
             self.cfg,
@@ -198,7 +217,7 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.RandomCrop(self.crop_size),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             ]
         )
         dataset_train = MyDataset(
@@ -222,7 +241,7 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Resize(self.input_size),
                 transforms.CenterCrop(self.crop_size),
                 transforms.ToTensor(),
-                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             ]
         )
 
@@ -246,7 +265,7 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Resize(self.input_size),
                 transforms.CenterCrop(self.crop_size),
                 transforms.ToTensor(),
-                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             ]
         )
 
