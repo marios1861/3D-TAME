@@ -1,8 +1,8 @@
 from typing import List
 
 import torch
-import torchvision
 import torch.nn as nn
+import torchvision
 
 from . import generic_atten as ga
 
@@ -35,7 +35,10 @@ class TAttentionV3(ga.AttentionMech):
         )
 
         self.mlps = nn.ModuleList(
-            [torchvision.ops.MLP(ft[2], [4 * ft[2], ft[2]], activation_layer=nn.GELU) for ft in ft_size]
+            [
+                torchvision.ops.MLP(ft[2], [4 * ft[2], ft[2]], activation_layer=nn.GELU)
+                for ft in ft_size
+            ]
         )
 
         # special initialization of MLP layers
@@ -72,24 +75,15 @@ class TAttentionV3(ga.AttentionMech):
         # layer norm 1
         xs = [op(feature) for op, feature in zip(self.lns_1, feature_maps)]
         # Multihead Attention
-        xs = [
-            op(x, x, x, need_weights=False)[0]
-            for op, x in zip(self.mhas, xs)
-        ]
+        xs = [op(x, x, x, need_weights=False)[0] for op, x in zip(self.mhas, xs)]
         # add (skip connection 1)
-        xs = [
-            x + feature_map
-            for x, feature_map in zip(xs, feature_maps)
-        ]
+        xs = [x + feature_map for x, feature_map in zip(xs, feature_maps)]
         # layer norm 2
         ys = [op(x) for op, x in zip(self.lns_1, xs)]
         # MLP
         ys = [op(y) for op, y in zip(self.mlps, ys)]
         # add (skip connection 2)
-        ys = [
-            y + x
-            for y, x in zip(ys, xs)
-        ]
+        ys = [y + x for y, x in zip(ys, xs)]
         # Reshape
         ys = [self.reshape(y) for y in ys]
         # Concat
