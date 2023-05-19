@@ -22,7 +22,7 @@ class TAMELIT(pl.LightningModule):
         model_name: str,
         layers: List[str],
         attention_version: str = "TAME",
-        noisy_masks: bool = True,
+        noisy_masks: str = "random",
         optimizer: str = "SGD",
         use_sam: bool = False,
         momentum: float = 0.9,
@@ -131,10 +131,11 @@ class TAMELIT(pl.LightningModule):
         )
 
     def on_test_epoch_start(self):
-        self.generic.noisy_masks = False
+        self.noisy_masks_state = self.generic.noisy_masks
+        self.generic.noisy_masks = "diagonal"
 
     def on_test_epoch_end(self):
-        self.generic.noisy_masks = True
+        self.generic.noisy_masks = self.noisy_masks_state
         self.log_dict(
             {
                 "AD 100%": torch.tensor(self.ADs[0]),

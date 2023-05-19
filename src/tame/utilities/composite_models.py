@@ -19,7 +19,7 @@ class Generic(nn.Module):
         mdl: nn.Module,
         feature_layers: List[str],
         attn_version: str,
-        noisy_masks: bool = True,
+        noisy_masks: str = "random",
     ):
         """Args:
         mdl (nn.Module): the model which we would like to use for interpretability
@@ -122,33 +122,61 @@ class Generic(nn.Module):
 
         if self.training:
             assert label is not None
-            return self.train_policy(a, label, x)
+            logits = self.train_policy(a, label, x)
+            self.logits = logits
+            return logits
         else:
             return x_norm
 
+    @staticmethod
+    def select_max_masks(
+        masks: torch.Tensor, logits: torch.Tensor, N: int
+    ) -> torch.Tensor:
+        """Select the N masks with the max logits"""
+        max_indexes = logits.topk(N)[1]
+        return masks[max_indexes, :, :]
+
     def get_c(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.c is not None
-        if self.noisy_masks:
+        if self.noisy_masks == "random":
             return self.c[:, labels, :, :]
+        elif self.noisy_masks == "diagonal":
+
+            def select_diagonal_masks(
+                mask: torch.Tensor, label: torch.Tensor
+            ) -> torch.Tensor:
+                return mask[label, :, :]
+
+            batched_select_diagonal_masks = torch.vmap(select_diagonal_masks)
+            return batched_select_diagonal_masks(self.c, labels)
+        elif self.noisy_masks == "max":
+            batched_select_max_masks = torch.vmap(
+                Generic.select_max_masks, in_dims=(0, 0, None)
+            )
+            return batched_select_max_masks(self.c, self.logits, self.logits.size(0))
         else:
-            masks = self.c
-            B, _, H, W = masks.size()
-            ndims = masks.ndim
-            indexes = labels.expand(H, W, 1, B).permute(*range(ndims - 1, -1, -1))
-            masks = torch.gather(masks, 1, indexes)
-            return masks
+            raise NotImplementedError
 
     def get_a(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.a is not None
-        if self.noisy_masks:
+        if self.noisy_masks == "random":
             return self.a[:, labels, :, :]
+        elif self.noisy_masks == "diagonal":
+
+            def select_diagonal_masks(
+                mask: torch.Tensor, label: torch.Tensor
+            ) -> torch.Tensor:
+                return mask[label, :, :]
+
+            batched_select_diagonal_masks = torch.vmap(select_diagonal_masks)
+            return batched_select_diagonal_masks(self.c, labels)
+        elif self.noisy_masks == "max":
+            batched_select_max_masks = torch.vmap(
+                Generic.select_max_masks, in_dims=(0, 0, None)
+            )
+            return batched_select_max_masks(self.c, self.logits, self.logits.size(0))
         else:
-            masks = self.a
-            B, _, H, W = masks.size()
-            ndims = masks.ndim
-            indexes = labels.expand(H, W, 1, B).permute(*range(ndims - 1, -1, -1))
-            masks = torch.gather(masks, 1, indexes)
-            return masks
+            raise NotImplementedError
 
 
 class Arrangement(nn.Module):
@@ -221,9 +249,13 @@ class Arrangement(nn.Module):
     def train_policy1(
         self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
     ) -> torch.Tensor:
-        B, C, H, W = masks.size()
-        indexes = labels.expand(H, W, 1, B).transpose(0, 3).transpose(1, 2)
-        masks = torch.gather(masks, 1, indexes)  # select masks
+        def select_diagonal_masks(
+            mask: torch.Tensor, label: torch.Tensor
+        ) -> torch.Tensor:
+            return mask[label, :, :]
+
+        batched_select_diagonal_masks = torch.vmap(select_diagonal_masks)
+        masks = batched_select_diagonal_masks(masks, labels)
         masks = F.interpolate(
             masks, size=(224, 224), mode="bilinear", align_corners=False
         )

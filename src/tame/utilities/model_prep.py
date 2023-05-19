@@ -19,7 +19,7 @@ def pl_get_config(
     model_name: str,
     layers: List[str],
     attention_version: str,
-    noisy_masks: bool,
+    noisy_masks: str,
     optimizer: str,
     momentum: float,
     decay: float,
