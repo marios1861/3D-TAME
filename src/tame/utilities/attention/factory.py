@@ -9,6 +9,7 @@ from tame.utilities.attention.old_attention import (AttentionV3d2,
 from tame.utilities.attention.tame import AttentionTAME
 from tame.utilities.attention.tattentionv1 import TAttentionV1, TAttentionV1_1
 from tame.utilities.attention.tattentionv2 import TAttentionV2, TAttentionV2_1
+from tame.utilities.attention.tattentionv3 import TAttentionV3
 
 
 class AttentionMechFactory(object):
@@ -22,6 +23,7 @@ class AttentionMechFactory(object):
         "TAttentionV1_1": TAttentionV1_1,
         "TAttentionV2": TAttentionV2,
         "TAttentionV2_1": TAttentionV2_1,
+        "TAttentionV3": TAttentionV3,
     }
 
     @classmethod
