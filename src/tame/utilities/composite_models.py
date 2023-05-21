@@ -142,9 +142,7 @@ class Generic(nn.Module):
             return self.c[:, labels, :, :]
         elif self.noisy_masks == "diagonal":
             batches = self.c.size(0)
-            return self.c[:, labels, :, :][
-                torch.arange(batches), torch.arange(batches), :, :
-            ].unsqueeze(1)
+            return self.c[torch.arange(batches), labels, :, :].unsqueeze(1)
 
         elif self.noisy_masks == "max":
             batched_select_max_masks = torch.vmap(
@@ -160,9 +158,7 @@ class Generic(nn.Module):
             return self.a[:, labels, :, :]
         elif self.noisy_masks == "diagonal":
             batches = self.a.size(0)
-            return self.a[:, labels, :, :][
-                torch.arange(batches), torch.arange(batches), :, :
-            ].unsqueeze(1)
+            return self.a[torch.arange(batches), labels, :, :].unsqueeze(1)
             batched_select_max_masks = torch.vmap(
                 Generic.select_max_masks, in_dims=(0, 0, None)
             )
@@ -242,9 +238,7 @@ class Arrangement(nn.Module):
         self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
     ) -> torch.Tensor:
         batches = masks.size(0)
-        masks = masks[:, labels, :, :][
-            torch.arange(batches), torch.arange(batches), :, :
-        ].unsqueeze(1)
+        masks = masks[torch.arange(batches), labels, :, :].unsqueeze(1)
         masks = F.interpolate(
             masks, size=(224, 224), mode="bilinear", align_corners=False
         )
