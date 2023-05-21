@@ -141,14 +141,11 @@ class Generic(nn.Module):
         if self.noisy_masks == "random":
             return self.c[:, labels, :, :]
         elif self.noisy_masks == "diagonal":
+            batches = self.c.size(0)
+            return self.c[:, labels, :, :][
+                torch.arange(batches), torch.arange(batches), :, :
+            ]
 
-            def select_diagonal_masks(
-                mask: torch.Tensor, label: torch.Tensor
-            ) -> torch.Tensor:
-                return mask[label, :, :]
-
-            batched_select_diagonal_masks = torch.vmap(select_diagonal_masks)
-            return batched_select_diagonal_masks(self.c, labels)
         elif self.noisy_masks == "max":
             batched_select_max_masks = torch.vmap(
                 Generic.select_max_masks, in_dims=(0, 0, None)
@@ -162,15 +159,10 @@ class Generic(nn.Module):
         if self.noisy_masks == "random":
             return self.a[:, labels, :, :]
         elif self.noisy_masks == "diagonal":
-
-            def select_diagonal_masks(
-                mask: torch.Tensor, label: torch.Tensor
-            ) -> torch.Tensor:
-                return mask[label, :, :]
-
-            batched_select_diagonal_masks = torch.vmap(select_diagonal_masks)
-            return batched_select_diagonal_masks(self.c, labels)
-        elif self.noisy_masks == "max":
+            batches = self.a.size(0)
+            return self.a[:, labels, :, :][
+                torch.arange(batches), torch.arange(batches), :, :
+            ]
             batched_select_max_masks = torch.vmap(
                 Generic.select_max_masks, in_dims=(0, 0, None)
             )
@@ -249,13 +241,10 @@ class Arrangement(nn.Module):
     def train_policy1(
         self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
     ) -> torch.Tensor:
-        def select_diagonal_masks(
-            mask: torch.Tensor, label: torch.Tensor
-        ) -> torch.Tensor:
-            return mask[label, :, :]
-
-        batched_select_diagonal_masks = torch.vmap(select_diagonal_masks)
-        masks = batched_select_diagonal_masks(masks, labels)
+        batches = masks.size(0)
+        masks = masks[:, labels, :, :][
+            torch.arange(batches), torch.arange(batches), :, :
+        ]
         masks = F.interpolate(
             masks, size=(224, 224), mode="bilinear", align_corners=False
         )
