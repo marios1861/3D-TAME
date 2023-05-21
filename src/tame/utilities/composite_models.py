@@ -144,7 +144,7 @@ class Generic(nn.Module):
             batches = self.c.size(0)
             return self.c[:, labels, :, :][
                 torch.arange(batches), torch.arange(batches), :, :
-            ]
+            ].unsqueeze(1)
 
         elif self.noisy_masks == "max":
             batched_select_max_masks = torch.vmap(
@@ -162,7 +162,7 @@ class Generic(nn.Module):
             batches = self.a.size(0)
             return self.a[:, labels, :, :][
                 torch.arange(batches), torch.arange(batches), :, :
-            ]
+            ].unsqueeze(1)
             batched_select_max_masks = torch.vmap(
                 Generic.select_max_masks, in_dims=(0, 0, None)
             )
@@ -244,7 +244,7 @@ class Arrangement(nn.Module):
         batches = masks.size(0)
         masks = masks[:, labels, :, :][
             torch.arange(batches), torch.arange(batches), :, :
-        ]
+        ].unsqueeze(1)
         masks = F.interpolate(
             masks, size=(224, 224), mode="bilinear", align_corners=False
         )
