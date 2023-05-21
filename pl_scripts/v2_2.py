@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from lightning.pytorch.loggers import CSVLogger
 
 from tame.utilities.pl_module import TAMELIT, LightnightDataset
+from tame.utilities import send_email
 
 load_dotenv()
 
@@ -45,11 +46,14 @@ trainer = pl.Trainer(
     max_epochs=8,
 )
 
+if os.environ["NODE_RANK"] == "0":
+    send_email("TEST!", os.environ["PASS"])
 trainer.fit(model, dataset)
 
 if os.environ["NODE_RANK"] == "0":
     tester = pl.Trainer(
         accelerator="gpu",
-        logger=CSVLogger("logs", name="vit_b_16_run_2_ddp_v1"),
+        logger=CSVLogger("logs", name="V2_2"),
     )
     tester.test(model, dataset)
+    send_email("V2_2", os.environ["PASS"])
