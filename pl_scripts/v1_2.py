@@ -15,6 +15,7 @@ os.environ["MASTER_ADDR"] = "160.40.53.85"
 os.environ["MASTER_PORT"] = "12345"
 os.environ["WORLD_SIZE"] = "3"
 torch.set_float32_matmul_precision("medium")
+version = "TAttentionV1_2"
 model = TAMELIT(
     model_name="vit_b_16",
     layers=[
@@ -22,7 +23,7 @@ model = TAMELIT(
         "encoder.layers.encoder_layer_10",
         "encoder.layers.encoder_layer_11",
     ],
-    attention_version="TAttentionV2_2",
+    attention_version=version,
     schedule="NEW",
     lr=0.001,
     epochs=8,
@@ -51,7 +52,7 @@ trainer.fit(model, dataset)
 if os.environ["NODE_RANK"] == "0":
     tester = pl.Trainer(
         accelerator="gpu",
-        logger=CSVLogger("logs", name="V2_2"),
+        logger=CSVLogger("logs", name=version),
     )
     tester.test(model, dataset)
-    send_email("V2_2", os.environ["PASS"])
+    send_email(version, os.environ["PASS"])
