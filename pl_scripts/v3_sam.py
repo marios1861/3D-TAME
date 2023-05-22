@@ -35,13 +35,13 @@ dataset = LightnightDataset(
     dataset_path=Path(os.getenv("DATA", "./")),
     datalist_path=Path(os.getenv("LIST", "./")),
     model="vit_b_16",
-    batch_size=64,
+    batch_size=32,
 )
 # torch._dynamo.config.verbose=True
 trainer = pl.Trainer(
     accelerator="gpu",
     num_nodes=3,
-    strategy="ddp",
+    strategy="ddp_find_unused_parameters_true",
     max_epochs=8,
 )
 
