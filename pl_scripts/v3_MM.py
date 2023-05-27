@@ -27,7 +27,7 @@ model = TAMELIT(
     schedule="NEW",
     lr=0.001,
     epochs=8,
-    noisy_masks="max"
+    noisy_masks="max",
 )
 # compiled_model: pl.LightningModule = torch.compile(model)  # type: ignore
 
@@ -41,7 +41,7 @@ dataset = LightnightDataset(
 trainer = pl.Trainer(
     accelerator="gpu",
     num_nodes=3,
-    strategy="ddp",
+    strategy="ddp_find_unused_parameters_true",
     precision="16-mixed",
     accumulate_grad_batches=4,
     gradient_clip_algorithm="norm",
