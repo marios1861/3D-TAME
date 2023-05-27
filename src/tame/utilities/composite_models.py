@@ -126,6 +126,7 @@ class Generic(nn.Module):
             self.logits = logits
             return logits
         else:
+            self.logits = x_norm
             return x_norm
 
     @staticmethod
@@ -159,10 +160,11 @@ class Generic(nn.Module):
         elif self.noisy_masks == "diagonal":
             batches = self.a.size(0)
             return self.a[torch.arange(batches), labels, :, :].unsqueeze(1)
+        elif self.noisy_masks == "max":
             batched_select_max_masks = torch.vmap(
                 Generic.select_max_masks, in_dims=(0, 0, None)
             )
-            return batched_select_max_masks(self.c, self.logits, self.logits.size(0))
+            return batched_select_max_masks(self.a, self.logits, self.logits.size(0))
         else:
             raise NotImplementedError
 
