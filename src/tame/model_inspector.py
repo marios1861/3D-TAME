@@ -1,14 +1,7 @@
 from torchvision import models
 from torchvision.models.feature_extraction import get_graph_node_names
 
-from .utilities.composite_models import Generic
-
-mdl = models.vit_b_16(pretrained=True)
-
-
-def model(feature_layers):
-    vgg_img = Generic(mdl, feature_layers.split(), 'TAME')
-    return vgg_img
+mdl = models.resnet50(pretrained=True)
 
 
 if __name__ == '__main__':
