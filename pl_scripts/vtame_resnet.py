@@ -26,7 +26,7 @@ model = TAMELIT(
     ],
     attention_version=version,
     schedule="NEW",
-    lr=0.001,
+    lr=0.0001,
     epochs=8,
 )
 # compiled_model: pl.LightningModule = torch.compile(model)  # type: ignore
