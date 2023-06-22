@@ -26,7 +26,7 @@ model = TAMELIT(
     ],
     attention_version=version,
     schedule="NEW",
-    lr=0.001,
+    lr=0.01,
     epochs=4,
 )
 # compiled_model: pl.LightningModule = torch.compile(model)  # type: ignore
@@ -45,7 +45,7 @@ trainer = pl.Trainer(
     precision="16-mixed",
     accumulate_grad_batches=4,
     gradient_clip_algorithm="norm",
-    max_epochs=4,
+    max_epochs=3,
 )
 
 trainer.fit(model, dataset)
