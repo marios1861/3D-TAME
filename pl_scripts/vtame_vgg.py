@@ -17,6 +17,7 @@ os.environ["WORLD_SIZE"] = "3"
 torch.set_float32_matmul_precision("medium")
 version = "TAME"
 postfix = "_vgg"
+epochs = 8
 model = TAMELIT(
     model_name="vgg16",
     layers=[
@@ -27,14 +28,14 @@ model = TAMELIT(
     attention_version=version,
     schedule="NEW",
     lr=0.01,
-    epochs=8,
+    epochs=epochs,
 )
 # compiled_model: pl.LightningModule = torch.compile(model)  # type: ignore
 
 dataset = LightnightDataset(
     dataset_path=Path(os.getenv("DATA", "./")),
     datalist_path=Path(os.getenv("LIST", "./")),
-    model="resnet50",
+    model="vgg16",
     batch_size=64,
 )
 # torch._dynamo.config.verbose=True
@@ -45,7 +46,7 @@ trainer = pl.Trainer(
     precision="16-mixed",
     accumulate_grad_batches=4,
     gradient_clip_algorithm="norm",
-    max_epochs=3,
+    max_epochs=epochs,
 )
 
 trainer.fit(model, dataset)
