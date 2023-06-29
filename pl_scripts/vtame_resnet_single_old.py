@@ -4,10 +4,11 @@ from pathlib import Path
 import lightning.pytorch as pl
 import torch
 from dotenv import load_dotenv
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 
-from tame.utilities.pl_module import TAMELIT, LightnightDataset
 from tame.utilities import send_email
+from tame.utilities.pl_module import TAMELIT, LightnightDataset
 
 load_dotenv()
 
@@ -26,6 +27,7 @@ model = TAMELIT(
         "layer4",
     ],
     attention_version=version,
+    train_method="old",
     schedule="NEW",
     lr=0.0001,
     epochs=epochs,
@@ -38,11 +40,14 @@ dataset = LightnightDataset(
     model="resnet50",
     batch_size=32,
 )
+checkpointer = ModelCheckpoint(save_top_k=-1)
+
 # torch._dynamo.config.verbose=True
 trainer = pl.Trainer(
     precision="16-mixed",
     gradient_clip_algorithm="norm",
     max_epochs=epochs,
+    callbacks=[checkpointer],
 )
 
 trainer.fit(model, dataset)

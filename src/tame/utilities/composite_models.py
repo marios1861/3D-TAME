@@ -8,6 +8,7 @@ from torchvision.models.feature_extraction import (
     create_feature_extractor,
     get_graph_node_names,
 )
+from torchvision import transforms
 
 from tame.utilities.attention.factory import AttentionMechFactory
 
@@ -20,6 +21,7 @@ class Generic(nn.Module):
         feature_layers: List[str],
         attn_version: str,
         noisy_masks: str = "random",
+        train_method: str = "new"
     ):
         """Args:
         mdl (nn.Module): the model which we would like to use for interpretability
@@ -67,8 +69,8 @@ class Generic(nn.Module):
             )
 
         # Get loss and forward training method
-        self.arr = "1-1"
-        arrangement = Arrangement("1-1", self.body, self.output)
+        self.arr = train_method
+        arrangement = Arrangement(self.arr, self.body, self.output)
         self.train_policy, self.get_loss = (arrangement.train_policy, arrangement.loss)
 
         self.a: Optional[torch.Tensor] = None
@@ -176,7 +178,8 @@ class Arrangement(nn.Module):
         self, version: str, body: nn.Module, output_name: str, noisy_masks=True
     ):
         super(Arrangement, self).__init__()
-        arrangements = {"1-1": (self.train_policy1, self.loss1)}
+        arrangements = {"new": (self.new_train_policy, self.classic_loss),
+                        "old": (self.old_train_policy, self.classic_loss)}
 
         self.loss_cross_entropy = nn.CrossEntropyLoss()
         self.body = body
@@ -224,7 +227,7 @@ class Arrangement(nn.Module):
             power * B
         )  # watch out, normalised by the batch size!
 
-    def loss1(
+    def classic_loss(
         self, logits: torch.Tensor, labels: torch.Tensor, masks: torch.Tensor
     ) -> List[torch.Tensor]:
         labels = labels.long()
@@ -236,7 +239,7 @@ class Arrangement(nn.Module):
 
         return [loss, cross_entropy, area_loss, variation_loss]
 
-    def train_policy1(
+    def new_train_policy(
         self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
     ) -> torch.Tensor:
         batches = masks.size(0)
@@ -245,4 +248,26 @@ class Arrangement(nn.Module):
             masks, size=(224, 224), mode="bilinear", align_corners=False
         )
         x_norm = masks * inp
+        return self.body(x_norm)[self.output_name]
+
+    def old_train_policy(
+        self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
+    ) -> torch.Tensor:
+        invTrans = transforms.Compose(
+            [
+                transforms.Normalize(
+                    mean=[0.0, 0.0, 0.0], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
+                ),
+                transforms.Normalize(
+                    mean=[-0.485, -0.456, -0.406], std=[1.0, 1.0, 1.0]
+                ),
+            ]
+        )
+        normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        batches = masks.size(0)
+        masks = masks[torch.arange(batches), labels, :, :].unsqueeze(1)
+        masks = F.interpolate(
+            masks, size=(224, 224), mode="bilinear", align_corners=False
+        )
+        x_norm = normalize(masks * invTrans(inp))
         return self.body(x_norm)[self.output_name]

@@ -10,7 +10,14 @@ from .sam import SAM
 
 def get_model(cfg: Dict[str, Any]) -> Generic:
     mdl = model_prep(cfg["model"])
-    mdl = Generic(cfg["model"], mdl, cfg["layers"], cfg["version"], cfg["noisy_masks"])
+    mdl = Generic(
+        cfg["model"],
+        mdl,
+        cfg["layers"],
+        cfg["version"],
+        cfg["noisy_masks"],
+        cfg["train_method"],
+    )
     mdl.cuda()
     return mdl
 
@@ -20,6 +27,7 @@ def pl_get_config(
     layers: List[str],
     attention_version: str,
     noisy_masks: str,
+    train_method: str,
     optimizer: str,
     momentum: float,
     decay: float,
@@ -32,6 +40,7 @@ def pl_get_config(
         "layers": layers,
         "version": attention_version,
         "noisy_masks": noisy_masks,
+        "train_method": train_method,  # "new" or "old"
         "optimizer": optimizer,
         "momentum": momentum,
         "decay": decay,
