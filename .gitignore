@@ -14,7 +14,7 @@ doodle.ipynb
 *.egg-info
 evaluation_data/
 .tb_logs/
-lightning_logs
 ddp_run.sh
 hparams.yaml
 .env
+*lightning_logs/
