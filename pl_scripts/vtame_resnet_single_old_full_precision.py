@@ -44,8 +44,6 @@ checkpointer = ModelCheckpoint(every_n_epochs=1)
 
 # torch._dynamo.config.verbose=True
 trainer = pl.Trainer(
-    precision="16-mixed",
-    gradient_clip_algorithm="norm",
     max_epochs=epochs,
     callbacks=[checkpointer],
 )
