@@ -21,7 +21,7 @@ class Generic(nn.Module):
         feature_layers: List[str],
         attn_version: str,
         noisy_masks: str = "random",
-        train_method: str = "new"
+        train_method: str = "new",
     ):
         """Args:
         mdl (nn.Module): the model which we would like to use for interpretability
@@ -52,6 +52,7 @@ class Generic(nn.Module):
         # Required for attention mechanism initialization
         ft_size = [o.shape for o in out.values()]
         # Build Attention mechanism
+        # Vision Transformer and not TAttention type attention module
         if Generic.is_transformer(mdl) and "TAttention" not in attn_version:
             if "vit_b_16" == name:
                 ft_size = [torch.Size([2, 768, 14, 14]) for _ in out.values()]
@@ -63,6 +64,17 @@ class Generic(nn.Module):
                 attn_version, ft_size
             )
             self.attn_mech = nn.Sequential(Generic.PreprocessSeq(name), self.attn_mech)
+
+        # CNN and TAttention type attention module
+        if not Generic.is_transformer(mdl) and "TAttention" in attn_version:
+            ft_size = [torch.Size([ft[0], ft[2] * ft[3], ft[1]]) for ft in ft_size]
+            self.attn_mech = AttentionMechFactory.create_attention(
+                attn_version, ft_size
+            )
+            self.attn_mech = nn.Sequential(Generic.PreprocessSeq("cnn"), self.attn_mech)
+
+        # CNN and not Tattention type attention module or Vision Transformer and
+        # TAttention type attention module
         else:
             self.attn_mech = AttentionMechFactory.create_attention(
                 attn_version, ft_size
@@ -87,7 +99,10 @@ class Generic(nn.Module):
     class PreprocessSeq(nn.Module):
         def __init__(self, name: str):
             super(Generic.PreprocessSeq, self).__init__()
-            implementations = {"vit_b_16": self.forward_vit_b_16}
+            implementations = {
+                "vit_b_16": self.forward_vit_b_16,
+                "cnn": self.forward_cnn,
+            }
             try:
                 self.forward = implementations[name]
             except KeyError:
@@ -104,6 +119,19 @@ class Generic(nn.Module):
             ]
             # bring channels after batch dimension
             seq_list = [seq.transpose(2, 3).transpose(1, 2) for seq in seq_list]
+            return seq_list
+
+        def forward_cnn(self, fmap_list: List[torch.Tensor]) -> List[torch.Tensor]:
+            # bring channels to the last dimension
+            fmap_list = [fmap.transpose(1, 2).transpose(2, 3) for fmap in fmap_list]
+            # now we have a list of tensors of shape (batch, H, W, channels)
+            # reshape
+            seq_list = [
+                seq.reshape(seq.size(0), seq.size(1) * seq.size(2), seq.size(3))
+                for seq in fmap_list
+            ]
+            # now we have a list of tensors of shape (batch, H*W, channels), we can
+            # use H*W as the sequence length and channels as the hidden dimension
             return seq_list
 
     def forward(
@@ -178,8 +206,10 @@ class Arrangement(nn.Module):
         self, version: str, body: nn.Module, output_name: str, noisy_masks=True
     ):
         super(Arrangement, self).__init__()
-        arrangements = {"new": (self.new_train_policy, self.classic_loss),
-                        "old": (self.old_train_policy, self.classic_loss)}
+        arrangements = {
+            "new": (self.new_train_policy, self.classic_loss),
+            "old": (self.old_train_policy, self.classic_loss),
+        }
 
         self.loss_cross_entropy = nn.CrossEntropyLoss()
         self.body = body
