@@ -1,8 +1,11 @@
+from functools import partial
+from math import sqrt
 from typing import List
 
 import torch
 import torch.nn as nn
 import torchvision
+import torch.nn.functional as F
 
 from . import generic_atten as ga
 
@@ -11,26 +14,28 @@ class TAttentionV3(ga.AttentionMech):
     def __init__(self, ft_size: List[torch.Size]):
         super().__init__(ft_size)
         # noinspection PyTypeChecker
-        ln_dim = ft_size[0][2]
         self.lns_1 = nn.ModuleList(
             [
                 nn.LayerNorm(
-                    ln_dim,
+                    ft[2],
                     eps=1e-06,
                 )
-                for _ in ft_size
+                for ft in ft_size
             ]
         )
         self.mhas = nn.ModuleList(
-            [nn.MultiheadAttention(ft[2], 12, batch_first=True) for ft in ft_size]
+            [
+                nn.MultiheadAttention(ft[2], int(ft[2] / 64), batch_first=True)
+                for ft in ft_size
+            ]
         )
         self.lns_2 = nn.ModuleList(
             [
                 nn.LayerNorm(
-                    ln_dim,
+                    ft[2],
                     eps=1e-06,
                 )
-                for _ in ft_size
+                for ft in ft_size
             ]
         )
 
@@ -49,9 +54,12 @@ class TAttentionV3(ga.AttentionMech):
                     if m.bias is not None:
                         nn.init.normal_(m.bias, std=1e-6)
 
-        def reshape_transform(tensor, height=14, width=14):
-            result = tensor[:, 1:, :].reshape(
-                tensor.size(0), height, width, tensor.size(2)
+        def reshape_transform(height, tensor):
+            # check for class token and remove it if present
+            if not sqrt(tensor.size(1)).is_integer():
+                tensor = tensor[:, 1:, :]
+            result = tensor.reshape(
+                tensor.size(0), height, height, tensor.size(2)
             )
 
             # Bring the channels to the first dimension,
@@ -59,7 +67,8 @@ class TAttentionV3(ga.AttentionMech):
             result = result.transpose(2, 3).transpose(1, 2)
             return result
 
-        self.reshape = reshape_transform
+        ft_heights = [int(sqrt(ft[1])) if sqrt(ft[1]).is_integer() else int(sqrt(ft[1] - 1)) for ft in ft_size]
+        self.reshape_tsfms = [partial(reshape_transform, int(sqrt(ft[1])) if sqrt(ft[1]).is_integer() else int(sqrt(ft[1] - 1))) for ft in ft_size]
         fuse_channels = sum(ft[2] for ft in ft_size)
 
         self.cnn_fuser = nn.Conv2d(
@@ -69,6 +78,13 @@ class TAttentionV3(ga.AttentionMech):
             padding=0,
             bias=True,
         )
+        if not ft_heights.count(ft_heights[0]) == len(ft_heights):
+            feat_height = ft_heights[0] if ft_heights[0] <= 56 else 56
+            self.interpolate = lambda inp: F.interpolate(
+                inp, size=(feat_height, feat_height), mode="bilinear", align_corners=False
+            )
+        else:
+            self.interpolate = lambda inp: inp
 
     def forward(self, features):
         feature_maps = features
@@ -85,7 +101,9 @@ class TAttentionV3(ga.AttentionMech):
         # add (skip connection 2)
         ys = [y + x for y, x in zip(ys, xs)]
         # Reshape
-        ys = [self.reshape(y) for y in ys]
+        ys = [reshape(y) for y, reshape in zip(ys, self.reshape_tsfms)]
+        # upscale when used on cnns
+        ys = [self.interpolate(y) for y in ys]
         # Concat
         ys = torch.cat(ys, 1)
         # fuse into 1000 channels
