@@ -17,27 +17,27 @@ os.environ["MASTER_PORT"] = "12345"
 os.environ["WORLD_SIZE"] = "3"
 torch.set_float32_matmul_precision("medium")
 version = "TAttentionV3"
-postfix = "_resnet"
+postfix = "_vgg"
+model_name = "vgg16"
 epochs = 8
 model = TAMELIT(
-    model_name="resnet50",
+    model_name=model_name,
     layers=[
-        "layer2",
-        "layer3",
-        "layer4",
+        "features.15",
+        "features.22",
+        "features.29",
     ],
     attention_version=version,
     schedule="NEW",
     lr=0.001,
     epochs=epochs,
-    train_method="old"
 )
 # model: pl.LightningModule = torch.compile(model)  # type: ignore
 
 dataset = LightnightDataset(
     dataset_path=Path(os.getenv("DATA", "./")),
     datalist_path=Path(os.getenv("LIST", "./")),
-    model="resnet50",
+    model=model_name,
     batch_size=32,
 )
 checkpointer = ModelCheckpoint(every_n_epochs=1, save_top_k=-1)
