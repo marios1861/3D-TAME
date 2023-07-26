@@ -61,13 +61,13 @@ def get_optim(
 ) -> optim.Optimizer:
     g = [], [], []  # optimizer parameter groups
     # normalization layers, i.e. BatchNorm2d()
-    bn = tuple(v for k, v in nn.__dict__.items() if "Norm" in k)
+    # bn = tuple(v for k, v in nn.__dict__.items() if "Norm" in k)
     for v in model.attn_mech.modules():
         for p_name, p in v.named_parameters(recurse=False):
             if p_name == "bias":  # bias (no decay)
                 g[2].append(p)
-            elif p_name == "weight" and isinstance(v, bn):  # weight (no decay)
-                g[1].append(p)
+            # elif p_name == "weight" and isinstance(v, bn):  # weight (no decay)
+            #     g[1].append(p)
             else:  # weight (with decay)
                 g[0].append(p)
     if not use_sam:
@@ -84,13 +84,17 @@ def get_optim(
             optimizer = optim.SGD(
                 g[2], lr=1e-7, momentum=cfg["momentum"], nesterov=True
             )
+        elif cfg["optimizer"] == "OLDSGD":
+            optimizer = optim.SGD(
+                g[2], lr=2 * 1e-7, momentum=cfg["momentum"], nesterov=True
+            )
         else:
             raise NotImplementedError(f'Optimizer {cfg["optimizer"]} not implemented.')
 
         # add g0 with weight_decay
         optimizer.add_param_group({"params": g[0], "weight_decay": cfg["decay"]})
-        # add g1 (BatchNorm2d weights)
-        optimizer.add_param_group({"params": g[1], "weight_decay": 0.0})
+        # # add g1 (BatchNorm2d weights)
+        # optimizer.add_param_group({"params": g[1], "weight_decay": 0.0})
     else:
         if cfg["optimizer"] == "Adam":
             # adjust beta1 to momentum
@@ -153,6 +157,19 @@ def get_schedule(
         schedule = lr.OneCycleLR(  # type: ignore
             optimizer,
             [cfg["lr"], 2 * cfg["lr"], 2 * cfg["lr"]],
+            epochs=cfg["epochs"] if total_steps is None else None,  # type:ignore
+            steps_per_epoch=steps_per_epoch,  # type:ignore
+            total_steps=total_steps,  # type:ignore
+            # this denotes the last iteration, if we are just starting out it should be its default
+            # value, -1
+            last_epoch=(currect_epoch * steps_per_epoch)  # type:ignore
+            if currect_epoch != 0
+            else -1,
+        )
+    elif cfg["schedule"] == "OLDCLASSIC":
+        schedule = lr.OneCycleLR(  # type: ignore
+            optimizer,
+            [2 * cfg["lr"], cfg["lr"]],
             epochs=cfg["epochs"] if total_steps is None else None,  # type:ignore
             steps_per_epoch=steps_per_epoch,  # type:ignore
             total_steps=total_steps,  # type:ignore

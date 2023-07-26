@@ -37,6 +37,8 @@ class TAMELIT(pl.LightningModule):
         eval_protocol: str = "new",
     ):
         super().__init__()
+        if optimizer == "OLDSGD":
+            schedule = "OLDCLASSIC"
         self.save_hyperparameters()
         self.cfg = ut.pl_get_config(
             model_name,
