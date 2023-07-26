@@ -20,6 +20,7 @@ class AD_IC:
     img_size: int
     percent_list: List[float] = field(default_factory=lambda: [0.0, 0.5, 0.85])
     noisy_masks: bool = False
+    protocol: str = "new"
 
     def __post_init__(self):
         self.chosen_logits_list = []
@@ -39,6 +40,7 @@ class AD_IC:
             self.img_size,
             self.percent_list,
             self.noisy_masks,
+            self.protocol,
         )
         new_logits_list = [
             new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
@@ -205,6 +207,7 @@ def get_masked_inputs(
     img_size: int,
     percent: List[float],
     noisy_masks: bool = True,
+    protocol: str = "new",
 ) -> List[torch.Tensor]:
     B, C, _, _ = masks.size()
     if noisy_masks:
@@ -227,7 +230,22 @@ def get_masked_inputs(
             .permute(*range(masks.ndim - 1, -1, -1))
         )
     masks_ls = [masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent]
-    x_masked_ls = [mask * inp for mask in masks_ls]
+    if protocol == "new":
+        x_masked_ls = [mask * inp for mask in masks_ls]
+    else:
+        invTrans = transforms.Compose(
+            [
+                transforms.Normalize(
+                    mean=[0.0, 0.0, 0.0], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
+                ),
+                transforms.Normalize(
+                    mean=[-0.485, -0.456, -0.406], std=[1.0, 1.0, 1.0]
+                ),
+            ]
+        )
+        normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        x_masked_ls = [normalize(mask * invTrans(inp)) for mask in masks_ls]
+        
     return x_masked_ls
 
 
