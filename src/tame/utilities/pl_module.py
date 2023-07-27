@@ -60,6 +60,7 @@ class TAMELIT(pl.LightningModule):
             task="multiclass", num_classes=num_classes, threshold=0
         )
         self.img_size = img_size
+        self.eval_protocol = eval_protocol
         self.metric_AD_IC = metrics.AD_IC(
             self.generic, img_size, percent_list=percent_list, protocol=eval_protocol
         )
@@ -140,23 +141,35 @@ class TAMELIT(pl.LightningModule):
 
     def on_test_epoch_end(self):
         self.generic.noisy_masks = self.noisy_masks_state
-        self.log_dict(
-            {
-                "AD 100%": torch.tensor(self.ADs[0]),
-                "IC 100%": torch.tensor(self.ICs[0]),
-                "AD 50%": torch.tensor(self.ADs[1]),
-                "IC 50%": torch.tensor(self.ICs[1]),
-                "AD 15%": torch.tensor(self.ADs[2]),
-                "IC 15%": torch.tensor(self.ICs[2]),
-                "ROAD 10%": torch.tensor(self.ROADs[0]),
-                "ROAD 20%": torch.tensor(self.ROADs[1]),
-                "ROAD 30%": torch.tensor(self.ROADs[2]),
-                "ROAD 40%": torch.tensor(self.ROADs[3]),
-                "ROAD 50%": torch.tensor(self.ROADs[4]),
-                "ROAD 70%": torch.tensor(self.ROADs[5]),
-                "ROAD 90%": torch.tensor(self.ROADs[6]),
-            }
-        )
+        if self.eval_protocol == "new":
+            self.log_dict(
+                {
+                    "AD 100%": torch.tensor(self.ADs[0]),
+                    "IC 100%": torch.tensor(self.ICs[0]),
+                    "AD 50%": torch.tensor(self.ADs[1]),
+                    "IC 50%": torch.tensor(self.ICs[1]),
+                    "AD 15%": torch.tensor(self.ADs[2]),
+                    "IC 15%": torch.tensor(self.ICs[2]),
+                    "ROAD 10%": torch.tensor(self.ROADs[0]),
+                    "ROAD 20%": torch.tensor(self.ROADs[1]),
+                    "ROAD 30%": torch.tensor(self.ROADs[2]),
+                    "ROAD 40%": torch.tensor(self.ROADs[3]),
+                    "ROAD 50%": torch.tensor(self.ROADs[4]),
+                    "ROAD 70%": torch.tensor(self.ROADs[5]),
+                    "ROAD 90%": torch.tensor(self.ROADs[6]),
+                }
+            )
+        else:
+            self.log_dict(
+                {
+                    "AD 100%": torch.tensor(self.ADs[0]),
+                    "IC 100%": torch.tensor(self.ICs[0]),
+                    "AD 50%": torch.tensor(self.ADs[1]),
+                    "IC 50%": torch.tensor(self.ICs[1]),
+                    "AD 15%": torch.tensor(self.ADs[2]),
+                    "IC 15%": torch.tensor(self.ICs[2]),
+                }
+            )
 
     def test_step(self, batch, batch_idx):
         # this is the test loop
@@ -173,11 +186,12 @@ class TAMELIT(pl.LightningModule):
             mode="bilinear",
             align_corners=False,
         )
-        masks = masks.squeeze().cpu().detach().numpy()
-        self.metric_ROAD(images, model_truth, masks)
+        if self.eval_protocol == "new":
+            masks = masks.squeeze().cpu().detach().numpy()
+            self.metric_ROAD(images, model_truth, masks)
+            self.ROADs = self.metric_ROAD.get_results() 
 
         self.ADs, self.ICs = self.metric_AD_IC.get_results()
-        self.ROADs = self.metric_ROAD.get_results()
 
     def configure_optimizers(self):
         optimizer = ut.get_optim(self.cfg, self.generic, self.use_sam)
