@@ -35,6 +35,7 @@ class TAMELIT(pl.LightningModule):
         percent_list: List[float] = [0.0, 0.5, 0.85],
         num_classes: int = 1000,
         eval_protocol: str = "new",
+        eval_length: str = "long",
     ):
         super().__init__()
         if optimizer == "OLDSGD":
@@ -60,7 +61,7 @@ class TAMELIT(pl.LightningModule):
             task="multiclass", num_classes=num_classes, threshold=0
         )
         self.img_size = img_size
-        self.eval_protocol = eval_protocol
+        self.eval_length = eval_length
         self.metric_AD_IC = metrics.AD_IC(
             self.generic, img_size, percent_list=percent_list, protocol=eval_protocol
         )
@@ -140,8 +141,10 @@ class TAMELIT(pl.LightningModule):
         self.generic.noisy_masks = "diagonal"
 
     def on_test_epoch_end(self):
+        self.ADs, self.ICs = self.metric_AD_IC.get_results()
         self.generic.noisy_masks = self.noisy_masks_state
-        if self.eval_protocol == "new":
+        if self.eval_length == "long":
+            self.ROADs = self.metric_ROAD.get_results()
             self.log_dict(
                 {
                     "AD 100%": torch.tensor(self.ADs[0]),
@@ -186,12 +189,9 @@ class TAMELIT(pl.LightningModule):
             mode="bilinear",
             align_corners=False,
         )
-        if self.eval_protocol == "new":
+        if self.eval_length == "long":
             masks = masks.squeeze().cpu().detach().numpy()
             self.metric_ROAD(images, model_truth, masks)
-            self.ROADs = self.metric_ROAD.get_results() 
-
-        self.ADs, self.ICs = self.metric_AD_IC.get_results()
 
     def configure_optimizers(self):
         optimizer = ut.get_optim(self.cfg, self.generic, self.use_sam)
