@@ -36,6 +36,7 @@ tame-auto = 'tame.train:cli_main'
 [tool.poetry.group.dev.dependencies]
 torch-tb-profiler = "^0.4.1"
 black = "^23.3.0"
+ipykernel = "^6.25.0"
 
 [build-system]
 requires = ["poetry-core"]

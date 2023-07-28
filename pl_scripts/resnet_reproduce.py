@@ -1,8 +1,6 @@
 import os
 from pathlib import Path
 
-from torch import nn
-
 import lightning.pytorch as pl
 import torch
 from dotenv import load_dotenv
@@ -10,9 +8,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 
 from tame.utilities import send_email
-from tame.utilities.attention.factory import AttentionMechFactory
 from tame.utilities.pl_module import TAMELIT, LightnightDataset
-from tame.utilities.attention.generic_atten import AttentionMech
 
 load_dotenv()
 
@@ -20,18 +16,23 @@ os.environ["MASTER_ADDR"] = "160.40.53.85"
 os.environ["MASTER_PORT"] = "12345"
 os.environ["WORLD_SIZE"] = "3"
 torch.set_float32_matmul_precision("medium")
-version = "TAttentionV3"
-postfix = "_vit"
+pl.seed_everything(42, workers=True)
+version = "TAME"
+model_name = "resnet50"
+postfix = "_resnet_reproduce"
 epochs = 8
-model_name = "vit_b_16"
 model = TAMELIT(
     model_name=model_name,
     layers=[
-        "encoder.layers.encoder_layer_9",
-        "encoder.layers.encoder_layer_10",
-        "encoder.layers.encoder_layer_11",],
+        "features.15",
+        "features.22",
+        "features.29",
+    ],
     attention_version=version,
-    lr=0.0003,
+    optimizer="OLDSGD",
+    eval_protocol="old",
+    eval_length="short",
+    lr=0.0001,
     epochs=epochs,
 )
 # model: pl.LightningModule = torch.compile(model)  # type: ignore
@@ -50,14 +51,10 @@ trainer = pl.Trainer(
     gradient_clip_algorithm="norm",
     max_epochs=epochs,
     callbacks=[checkpointer],
+    logger=CSVLogger("logs", name=(version + postfix)),
 )
 
 trainer.fit(model, dataset)
 
-
-tester = pl.Trainer(
-    accelerator="gpu",
-    logger=CSVLogger("logs", name=(version + postfix)),
-)
-tester.test(model, dataset)
+trainer.test(model, dataset)
 send_email(version + postfix, os.environ["PASS"])

@@ -18,3 +18,4 @@ ddp_run.sh
 hparams.yaml
 .env
 *lightning_logs/
+old models/
