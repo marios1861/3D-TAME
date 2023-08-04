@@ -63,7 +63,7 @@ class TAMELIT(pl.LightningModule):
         self.img_size = img_size
         self.eval_length = eval_length
         self.metric_AD_IC = metrics.AD_IC(
-            self.generic, img_size, percent_list=percent_list, protocol=eval_protocol
+            self.generic, img_size, percent_list=percent_list, protocol=eval_protocol, train_method=train_method
         )
         self.metric_ROAD = metrics.ROAD(self.generic, ROADMostRelevantFirst)
         self.generic.requires_grad_(False)

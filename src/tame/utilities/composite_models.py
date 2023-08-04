@@ -82,8 +82,8 @@ class Generic(nn.Module):
 
         # Get loss and forward training method
         self.arr = train_method
-        arrangement = Arrangement(self.arr, self.body, self.output)
-        self.train_policy, self.get_loss = (arrangement.train_policy, arrangement.loss)
+        self.arrangement = Arrangement(self.arr, self.body, self.output)
+        self.train_policy, self.get_loss = (self.arrangement.train_policy, self.arrangement.loss)
 
         self.a: Optional[torch.Tensor] = None
         self.c: Optional[torch.Tensor] = None
@@ -209,7 +209,14 @@ class Arrangement(nn.Module):
         arrangements = {
             "new": (self.new_train_policy, self.classic_loss),
             "old": (self.old_train_policy, self.classic_loss),
+            "layernorm": (self.ln_train_policy, self.classic_loss),
+            "batchnorm": (self.bn_train_policy, self.classic_loss),
         }
+
+        if version == "layernorm":
+            self.norm = nn.LayerNorm([3, 224, 224])
+        elif version == "batchnorm":
+            self.norm = nn.BatchNorm2d(3)
 
         self.loss_cross_entropy = nn.CrossEntropyLoss()
         self.body = body
@@ -268,6 +275,30 @@ class Arrangement(nn.Module):
         loss = cross_entropy + area_loss + variation_loss
 
         return [loss, cross_entropy, area_loss, variation_loss]
+
+    def bn_train_policy(
+        self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
+    ) -> torch.Tensor:
+        batches = masks.size(0)
+        masks = masks[torch.arange(batches), labels, :, :].unsqueeze(1)
+        masks = F.interpolate(
+            masks, size=(224, 224), mode="bilinear", align_corners=False
+        )
+        # normalize the mask
+        x_norm = self.norm(masks * inp)
+        return self.body(x_norm)[self.output_name]
+
+    def ln_train_policy(
+        self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
+    ) -> torch.Tensor:
+        batches = masks.size(0)
+        masks = masks[torch.arange(batches), labels, :, :].unsqueeze(1)
+        masks = F.interpolate(
+            masks, size=(224, 224), mode="bilinear", align_corners=False
+        )
+        # normalize the mask
+        x_norm = self.norm(masks * inp)
+        return self.body(x_norm)[self.output_name]
 
     def new_train_policy(
         self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
