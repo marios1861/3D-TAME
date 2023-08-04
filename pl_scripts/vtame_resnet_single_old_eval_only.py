@@ -16,21 +16,12 @@ os.environ["MASTER_ADDR"] = "160.40.53.85"
 os.environ["MASTER_PORT"] = "12345"
 os.environ["WORLD_SIZE"] = "3"
 torch.set_float32_matmul_precision("medium")
-version = "TAME"
-postfix = "_resnet"
+version = "v3"
+postfix = "_vit"
 epochs = 8
-model = TAMELIT(
-    model_name="resnet50",
-    layers=[
-        "layer2",
-        "layer3",
-        "layer4",
-    ],
-    attention_version=version,
-    train_method="old",
-    optimizer="OLDSGD",
-    lr=0.001,
-    epochs=epochs,
+model = TAMELIT.load_from_checkpoint(
+    "/home/marios/Documents/T-TAME/pl_scripts/old_lightning_logs/tame_new/checkpoints/epoch=7-step=20024.ckpt",
+    eval_protocol="old",
 )
 # model: pl.LightningModule = torch.compile(model)  # type: ignore
 
@@ -43,19 +34,19 @@ dataset = LightnightDataset(
 checkpointer = ModelCheckpoint(every_n_epochs=1, save_top_k=-1)
 
 # torch._dynamo.config.verbose=True
-trainer = pl.Trainer(
-    precision="16-mixed",
-    gradient_clip_algorithm="norm",
-    max_epochs=epochs,
-    callbacks=[checkpointer],
-)
+# trainer = pl.Trainer(
+#     precision="16-mixed",
+#     gradient_clip_algorithm="norm",
+#     max_epochs=epochs,
+#     callbacks=[checkpointer],
+# )
 
-trainer.fit(model, dataset)
+# trainer.fit(model, dataset)
 
 
 tester = pl.Trainer(
     accelerator="gpu",
-    logger=CSVLogger("logs", name=(version + postfix)),
+    # logger=CSVLogger("logs", name=(version + postfix)),
 )
 tester.test(model, dataset)
-send_email(version + postfix, os.environ["PASS"])
+# send_email(version + postfix, os.environ["PASS"])

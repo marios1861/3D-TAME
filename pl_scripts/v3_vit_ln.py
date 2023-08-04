@@ -15,47 +15,52 @@ load_dotenv()
 os.environ["MASTER_ADDR"] = "160.40.53.85"
 os.environ["MASTER_PORT"] = "12345"
 os.environ["WORLD_SIZE"] = "3"
+
 torch.set_float32_matmul_precision("medium")
-version = "TAME"
-postfix = "_resnet"
+pl.seed_everything(42, workers=True)
+
+version = "TAttentionV3"
+model_name = "vit_b_16"
+postfix = "_vit_ln"
 epochs = 8
+
 model = TAMELIT(
-    model_name="resnet50",
+    model_name=model_name,
     layers=[
-        "layer2",
-        "layer3",
-        "layer4",
+        "encoder.layers.encoder_layer_9",
+        "encoder.layers.encoder_layer_10",
+        "encoder.layers.encoder_layer_11",
     ],
     attention_version=version,
-    train_method="old",
-    optimizer="OLDSGD",
+    train_method="layernorm",
     lr=0.001,
     epochs=epochs,
 )
-# model: pl.LightningModule = torch.compile(model)  # type: ignore
 
 dataset = LightnightDataset(
     dataset_path=Path(os.getenv("DATA", "./")),
     datalist_path=Path(os.getenv("LIST", "./")),
-    model="resnet50",
+    model=model_name,
     batch_size=32,
 )
+
 checkpointer = ModelCheckpoint(every_n_epochs=1, save_top_k=-1)
 
 # torch._dynamo.config.verbose=True
 trainer = pl.Trainer(
+    accelerator="gpu",
     precision="16-mixed",
     gradient_clip_algorithm="norm",
     max_epochs=epochs,
     callbacks=[checkpointer],
 )
 
-trainer.fit(model, dataset)
+# trainer.fit(model, dataset)
 
 
 tester = pl.Trainer(
-    accelerator="gpu",
     logger=CSVLogger("logs", name=(version + postfix)),
+    deterministic=True,
 )
 tester.test(model, dataset)
 send_email(version + postfix, os.environ["PASS"])
