@@ -24,9 +24,9 @@ epochs = 8
 model = TAMELIT(
     model_name=model_name,
     layers=[
-        "features.15",
-        "features.22",
-        "features.29",
+        "layer2",
+        "layer3",
+        "layer4",
     ],
     attention_version=version,
     optimizer="OLDSGD",
@@ -55,6 +55,8 @@ trainer = pl.Trainer(
 )
 
 trainer.fit(model, dataset)
-
-trainer.test(model, dataset)
+tester = pl.Trainer(
+    logger=CSVLogger("logs", name=(version + postfix)),
+)
+tester.test(model, dataset)
 send_email(version + postfix, os.environ["PASS"])

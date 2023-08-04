@@ -19,3 +19,4 @@ hparams.yaml
 .env
 *lightning_logs/
 old models/
+*logs/
