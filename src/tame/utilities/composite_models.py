@@ -10,7 +10,7 @@ from torchvision.models.feature_extraction import (
 )
 from torchvision import transforms
 
-from tame.utilities.attention.factory import AttentionMechFactory
+from tame.utilities.attention.factory import AMBuilder
 
 
 class Generic(nn.Module):
@@ -51,88 +51,20 @@ class Generic(nn.Module):
 
         # Required for attention mechanism initialization
         ft_size = [o.shape for o in out.values()]
-        # Build Attention mechanism
-        # Vision Transformer and not TAttention type attention module
-        if Generic.is_transformer(mdl) and "TAttention" not in attn_version:
-            if "vit_b_16" == name:
-                ft_size = [torch.Size([2, 768, 14, 14]) for _ in out.values()]
-            else:
-                raise NotImplementedError(
-                    f"TAME not implemented for the transformer {name}."
-                )
-            self.attn_mech = AttentionMechFactory.create_attention(
-                attn_version, ft_size
-            )
-            self.attn_mech = nn.Sequential(Generic.PreprocessSeq(name), self.attn_mech)
 
-        # CNN and TAttention type attention module
-        if not Generic.is_transformer(mdl) and "TAttention" in attn_version:
-            ft_size = [torch.Size([ft[0], ft[2] * ft[3], ft[1]]) for ft in ft_size]
-            self.attn_mech = AttentionMechFactory.create_attention(
-                attn_version, ft_size
-            )
-            self.attn_mech = nn.Sequential(Generic.PreprocessSeq("cnn"), self.attn_mech)
-
-        # CNN and not Tattention type attention module or Vision Transformer and
-        # TAttention type attention module
-        else:
-            self.attn_mech = AttentionMechFactory.create_attention(
-                attn_version, ft_size
-            )
-
+        # Build AM
+        self.attn_mech = AMBuilder.create_attention(name, mdl, attn_version, ft_size)
         # Get loss and forward training method
         self.arr = train_method
         self.arrangement = Arrangement(self.arr, self.body, self.output)
-        self.train_policy, self.get_loss = (self.arrangement.train_policy, self.arrangement.loss)
+        self.train_policy, self.get_loss = (
+            self.arrangement.train_policy,
+            self.arrangement.loss,
+        )
 
         self.a: Optional[torch.Tensor] = None
         self.c: Optional[torch.Tensor] = None
         self.noisy_masks = noisy_masks
-
-    @staticmethod
-    def is_transformer(mdl: nn.Module) -> bool:
-        for module in mdl.modules():
-            if isinstance(module, nn.MultiheadAttention):
-                return True
-        return False
-
-    class PreprocessSeq(nn.Module):
-        def __init__(self, name: str):
-            super(Generic.PreprocessSeq, self).__init__()
-            implementations = {
-                "vit_b_16": self.forward_vit_b_16,
-                "cnn": self.forward_cnn,
-            }
-            try:
-                self.forward = implementations[name]
-            except KeyError:
-                raise KeyError(
-                    f"Feature preprocessing not implemented for transformer {name}"
-                )
-
-        def forward_vit_b_16(self, seq_list: List[torch.Tensor]) -> List[torch.Tensor]:
-            # discard class tocken
-            seq_list = [seq[:, 1:, :] for seq in seq_list]
-            # reshape
-            seq_list = [
-                seq.reshape(seq.size(0), 14, 14, seq.size(2)) for seq in seq_list
-            ]
-            # bring channels after batch dimension
-            seq_list = [seq.transpose(2, 3).transpose(1, 2) for seq in seq_list]
-            return seq_list
-
-        def forward_cnn(self, fmap_list: List[torch.Tensor]) -> List[torch.Tensor]:
-            # bring channels to the last dimension
-            fmap_list = [fmap.transpose(1, 2).transpose(2, 3) for fmap in fmap_list]
-            # now we have a list of tensors of shape (batch, H, W, channels)
-            # reshape
-            seq_list = [
-                seq.reshape(seq.size(0), seq.size(1) * seq.size(2), seq.size(3))
-                for seq in fmap_list
-            ]
-            # now we have a list of tensors of shape (batch, H*W, channels), we can
-            # use H*W as the sequence length and channels as the hidden dimension
-            return seq_list
 
     def forward(
         self, x: torch.Tensor, label: Optional[torch.LongTensor] = None
