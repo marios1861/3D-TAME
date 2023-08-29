@@ -60,7 +60,7 @@ def save_checkpoint(args, state, filename):
 
 def get_model(args):
     mdl = model_prep(args.model)
-    mdl = Generic(mdl, args.layers.split(), args.version)
+    mdl = Generic(args.model, mdl, args.layers.split(), args.version)
     mdl.cuda()
     return mdl
 

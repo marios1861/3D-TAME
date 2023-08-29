@@ -3,24 +3,24 @@ from typing import ClassVar, Dict, List, Type
 import torch
 import torch.nn as nn
 
-from generic_atten import AttentionMech
-from old_attention import (
+from .generic_atten import AttentionMech
+from .old_attention import (
     AttentionV3d2,
     AttentionV3d2dd1,
     AttentionV5d1,
 )
-from tame import AttentionTAME
-from tattentionv1 import (
+from .tame import AttentionTAME
+from .tattentionv1 import (
     TAttentionV1,
     TAttentionV1_1,
     TAttentionV1_2,
 )
-from tattentionv2 import (
+from .tattentionv2 import (
     TAttentionV2,
     TAttentionV2_1,
     TAttentionV2_2,
 )
-from tattentionv3 import TAttentionV3
+from .tattentionv3 import TAttentionV3
 
 
 class AMBuilder(object):
