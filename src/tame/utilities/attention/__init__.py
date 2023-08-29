@@ -1,3 +1,3 @@
-from .factory import AttentionMechFactory
+from .factory import AMBuilder
 
-__all__ = ["AttentionMechFactory"]
+__all__ = ["AMBuilder"]

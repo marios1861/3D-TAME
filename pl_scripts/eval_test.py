@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 
-from tame.utilities.attention.factory import AttentionMechFactory
+from tame.utilities.attention.factory import AMBuilder
 from tame.utilities.attention.tattentionv3 import TAttentionV3
 from tame.utilities.pl_module import TAMELIT, LightnightDataset
 

@@ -10,7 +10,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 
 from tame.utilities import send_email
-from tame.utilities.attention.factory import AttentionMechFactory
+from tame.utilities.attention.factory import AMBuilder
 from tame.utilities.pl_module import TAMELIT, LightnightDataset
 from tame.utilities.attention.generic_atten import AttentionMech
 

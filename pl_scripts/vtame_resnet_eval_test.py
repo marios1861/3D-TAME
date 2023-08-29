@@ -5,7 +5,7 @@ import lightning.pytorch as pl
 import torch
 from dotenv import load_dotenv
 from lightning.pytorch.loggers import CSVLogger
-from tame.utilities.attention.factory import AttentionMechFactory
+from tame.utilities.attention.factory import AMBuilder
 from tame.utilities.attention.tame import AttentionTAME
 
 from tame.utilities.pl_module import TAMELIT, LightnightDataset
@@ -29,7 +29,7 @@ class TestTAME(AttentionTAME):
         return c, c
 
 
-AttentionMechFactory.register_attention(version, TestTAME)
+AMBuilder.register_attention(version, TestTAME)
 postfix = "_resnet"
 epochs = 8
 model = TAMELIT(
