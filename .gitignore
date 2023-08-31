@@ -7,3 +7,4 @@
 *.pyc
 *.egg-info
 snapshots
+!snapshots/resnet50_TAME_original

@@ -47,7 +47,7 @@ def get_arguments():
 
 def get_model(args):
     mdl = model_prep(args.model)
-    mdl = Generic(mdl, args.layers.split(), args.version)
+    mdl = Generic(args.model, mdl, args.layers.split(), args.version)
     restore(args, mdl, istrain=False)
     mdl.cuda()
     return mdl
