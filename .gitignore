@@ -4,6 +4,7 @@
 /dataset/ILSVRC2012_img_val
 /snapshots/data/
 .venv
+venv
 *.pyc
 *.egg-info
 snapshots
