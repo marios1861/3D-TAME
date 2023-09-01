@@ -8,3 +8,7 @@
 *.egg-info
 snapshots
 !snapshots/resnet50_TAME_original
+.tb_logs
+pl_scripts
+src
+evaluation_data
