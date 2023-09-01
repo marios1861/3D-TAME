@@ -78,16 +78,25 @@ def train(args):
     model = get_model(args)
 
     # define optimizer
-    # We initially decay the learning rate by one step before the first epoch
-    weights = [weight for name, weight in model.attn_mech.named_parameters() if 'weight' in name]
-    biases = [bias for name, bias in model.attn_mech.named_parameters() if 'bias' in name]
+    g = [], [], []  # optimizer parameter groups
+    # normalization layers, i.e. BatchNorm2d()
+    bn = tuple(v for k, v in torch.nn.__dict__.items() if "Norm" in k)
+    for v in model.attn_mech.modules():
+        for p_name, p in v.named_parameters(recurse=False):
+            if p_name == "bias":  # bias (no decay)
+                g[2].append(p)
+            elif p_name == "weight" and isinstance(v, bn):  # weight (no decay)
+                g[1].append(p)
+            else:  # weight (with decay)
+                g[0].append(p)
 
+    optimizer = optim.SGD(
+        g[2], lr=2 * 1e-7, momentum=0.9, nesterov=True
+    )
+    optimizer.add_param_group({"params": g[0], "weight_decay": 5.0e-4})
+    optimizer.add_param_group({"params": g[1], "weight_decay": 0.0})
     torch.autograd.set_detect_anomaly(True)
 
-    # noinspection PyArgumentList
-    optimizer = optim.SGD([{'params': weights, 'lr': 1e-7, 'weight_decay': args.wd},
-                           {'params': biases, 'lr': 1e-7 * 2}],
-                          momentum=0.9, nesterov=True)
     if args.restore_from != '':
         args.snapshot_dir = args.restore_from
     else:
@@ -135,7 +144,7 @@ def train(args):
         top1.reset()
         top5.reset()
         batch_time.reset()
-        disp_time = time.perf_counter()
+        disp_time = time.perf_counter() # noqa
         sample_freq = 100
         samples_interval = int(steps_per_epoch / sample_freq)
 
@@ -183,7 +192,7 @@ def train(args):
             # every samples_interval batches we update the postfix
             if global_counter % samples_interval == 0:
                 eta_seconds = ((total_epoch - current_epoch) * steps_per_epoch + (
-                            steps_per_epoch - idx)) * batch_time.avg
+                    steps_per_epoch - idx)) * batch_time.avg
                 eta_str = (datetime.timedelta(seconds=int(eta_seconds)))
                 postfix = {'ETA': eta_str, 'Total Loss': losses.avg, 'CE Loss': losses_ce.avg,
                            'Mean Loss': losses_meanMask.avg, 'Var Loss': losses_variationMask.avg,
@@ -210,6 +219,7 @@ def train(args):
                             'optimizer': optimizer.state_dict()
                         },
                         filename=f'epoch_{current_epoch}.pt')
+
 
 def main():
     cmd_args = get_arguments()
