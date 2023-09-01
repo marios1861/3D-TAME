@@ -23,7 +23,7 @@ class Generic(nn.Module):
         feature_layers: List[str],
         attn_version: str,
         noisy_masks: str = "random",
-        train_method: str = "legacy",
+        train_method: str = "old",
     ):
         """Args:
         mdl (nn.Module): the model which we would like to use for interpretability
@@ -71,7 +71,10 @@ class Generic(nn.Module):
     def forward(
         self, x: torch.Tensor, label: Optional[torch.LongTensor] = None
     ) -> torch.Tensor:
-        x_norm = Generic.normalization(x)
+        if self.arr == "legacy":
+            x_norm = Generic.normalization(x)
+        else:
+            x_norm = x
 
         features: Dict[str, torch.Tensor] = self.body(x_norm)
         x_norm = features.pop(self.output)

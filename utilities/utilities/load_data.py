@@ -18,6 +18,7 @@ def data_loader(args, train=True):
             transforms.RandomCrop(crop_size),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
         img_train = MyDataset(args.img_dir, args.train_list,
                               transform=tsfm_train)
