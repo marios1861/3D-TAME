@@ -14,6 +14,8 @@ from tame.utilities.attention.factory import AMBuilder
 
 
 class Generic(nn.Module):
+    normalization = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+
     def __init__(
         self,
         name: str,
@@ -69,7 +71,10 @@ class Generic(nn.Module):
     def forward(
         self, x: torch.Tensor, label: Optional[torch.LongTensor] = None
     ) -> torch.Tensor:
-        x_norm = x
+        if self.arr == "legacy":
+            x_norm = Generic.normalization(x)
+        else:
+            x_norm = x
 
         features: Dict[str, torch.Tensor] = self.body(x_norm)
         x_norm = features.pop(self.output)
@@ -141,6 +146,7 @@ class Arrangement(nn.Module):
         arrangements = {
             "new": (self.new_train_policy, self.classic_loss),
             "old": (self.old_train_policy, self.classic_loss),
+            "legacy": (self.legacy_train_policy, self.classic_loss),
             "layernorm": (self.ln_train_policy, self.classic_loss),
             "batchnorm": (self.bn_train_policy, self.classic_loss),
         }
@@ -263,4 +269,16 @@ class Arrangement(nn.Module):
             masks, size=(224, 224), mode="bilinear", align_corners=False
         )
         x_norm = normalize(masks * invTrans(inp))
+        return self.body(x_norm)[self.output_name]
+
+    def legacy_train_policy(
+        self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
+    ) -> torch.Tensor:
+        normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        batches = masks.size(0)
+        masks = masks[torch.arange(batches), labels, :, :].unsqueeze(1)
+        masks = F.interpolate(
+            masks, size=(224, 224), mode="bilinear", align_corners=False
+        )
+        x_norm = normalize(masks * inp)
         return self.body(x_norm)[self.output_name]

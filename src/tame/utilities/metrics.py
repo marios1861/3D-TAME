@@ -28,7 +28,7 @@ class AD_IC:
     def __post_init__(self):
         self.chosen_logits_list = []
         self.new_logits_list = []
-        if not (self.train_method == "old" or self.train_method == "new"):
+        if not (self.train_method == "old" or self.train_method == "new" or self.train_method == "legacy"):
             assert isinstance(self.model, Generic)
             self.norm = self.model.arrangement.norm
         else:

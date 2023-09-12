@@ -219,6 +219,7 @@ class LightnightDataset(pl.LightningDataModule):
         crop_size: int = 224,
         datalist_file: Optional[str] = None,
         model: Optional[str] = None,
+        legacy: bool = False,
     ):
         super().__init__()
         self.input_size = input_size
@@ -231,6 +232,7 @@ class LightnightDataset(pl.LightningDataModule):
         self.batch_size = batch_size
         self.datalist_file = datalist_file
         self.model = model
+        self.legacy = legacy
 
     def train_dataloader(self):
         tsfm_train = transforms.Compose(
@@ -242,6 +244,15 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             ]
         )
+        if self.legacy:
+            tsfm_train = transforms.Compose(
+                [
+                    transforms.Resize(self.input_size),
+                    transforms.RandomCrop(self.crop_size),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                ]
+            )
         dataset_train = MyDataset(
             self.dataset_path / "ILSVRC2012_img_train",
             self.datalist_path / self.datalist_file
@@ -266,7 +277,14 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             ]
         )
-
+        if self.legacy:
+            tsfm_val = transforms.Compose(
+                [
+                    transforms.Resize(self.input_size),
+                    transforms.CenterCrop(self.crop_size),
+                    transforms.ToTensor(),
+                ]
+            )
         dataset_val = MyDataset(
             Path(self.dataset_path) / "ILSVRC2012_img_val",
             self.datalist_path / "Validation_2000.txt",
@@ -290,6 +308,14 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             ]
         )
+        if self.legacy:
+            tsfm_val = transforms.Compose(
+                [
+                    transforms.Resize(self.input_size),
+                    transforms.CenterCrop(self.crop_size),
+                    transforms.ToTensor(),
+                ]
+            )
 
         dataset_test = MyDataset(
             Path(self.dataset_path) / "ILSVRC2012_img_val",
