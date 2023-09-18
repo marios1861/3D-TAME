@@ -31,7 +31,6 @@ model = TAMELIT(
     layers=layers,
     attention_version=version,
     train_method="new",
-    eval_protocol="old",
     schedule="NEW",
     lr=0.001,
     epochs=epochs,

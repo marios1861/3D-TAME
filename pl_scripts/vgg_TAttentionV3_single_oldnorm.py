@@ -31,7 +31,6 @@ model = TAMELIT(
     layers=layers,
     attention_version=version,
     train_method="legacy",
-    eval_protocol="old",
     schedule="NEW",
     lr=0.001,
     epochs=epochs,
@@ -43,6 +42,7 @@ dataset = LightnightDataset(
     datalist_path=Path(os.getenv("LIST", "./")),
     model=model_name,
     batch_size=32,
+    legacy=True,
 )
 
 checkpointer = ModelCheckpoint(every_n_epochs=1, save_on_train_epoch_end=False)

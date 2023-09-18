@@ -23,16 +23,10 @@ class AD_IC:
     train_method: str
     percent_list: List[float] = field(default_factory=lambda: [0.0, 0.5, 0.85])
     noisy_masks: bool = False
-    protocol: str = "new"
 
     def __post_init__(self):
         self.chosen_logits_list = []
         self.new_logits_list = []            
-        if not (self.train_method == "old" or self.train_method == "new"):
-            assert isinstance(self.model, Generic)
-            self.norm = self.model.arrangement.norm
-        else:
-            self.norm = None
 
     @torch.no_grad()
     def __call__(
@@ -48,9 +42,7 @@ class AD_IC:
             self.img_size,
             self.percent_list,
             self.noisy_masks,
-            self.protocol,
             self.train_method,
-            self.norm
         )
         new_logits_list = [
             new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
@@ -221,9 +213,7 @@ def get_masked_inputs(
     img_size: int,
     percent: List[float],
     noisy_masks: bool = True,
-    protocol: str = "new",
     train_method: str = "old",
-    norm=None,
 ) -> List[torch.Tensor]:
     B, C, _, _ = masks.size()
     if noisy_masks:
@@ -247,9 +237,7 @@ def get_masked_inputs(
         )
 
     masks_ls = [masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent]
-    if protocol == "new" and (train_method == "old" or train_method == "new"):
-        x_masked_ls = [mask * inp for mask in masks_ls]
-    elif protocol == "old" and (train_method == "old" or train_method == "new"):
+    if train_method == "old" or train_method == "new":
         invTrans = transforms.Compose(
             [
                 transforms.Normalize(
@@ -262,9 +250,8 @@ def get_masked_inputs(
         )
         normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         x_masked_ls = [normalize(mask * invTrans(inp)) for mask in masks_ls]
-    elif not (train_method == "new" or train_method == "old"):
-        assert isinstance(norm, Callable)
-        x_masked_ls = [norm(mask * inp) for mask in masks_ls]
+    elif train_method == "legacy":
+        x_masked_ls = [mask * inp for mask in masks_ls]
     else:
         raise NotImplementedError
     return x_masked_ls
