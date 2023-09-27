@@ -5,9 +5,11 @@ from .model_prep import get_model, get_optim, get_schedule, model_prep, pl_get_c
 from .restore import load_model, save_model
 from .proj_utilities import get_project_root, load_config
 from .pl_module import TAMELIT, LightnightDataset
+from .comp_module import COMPAREVIT
 from .send_email import send_email
 
 __all__ = [
+    "COMPAREVIT",
     "AverageMeter",
     "Generic",
     "data_loader",

@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass, field
-from typing import Callable, List, Tuple, Type, Union
+from typing import List, Tuple, Type, Union
 
 import cv2
 import numpy as np
@@ -11,8 +11,6 @@ from pytorch_grad_cam.utils.model_targets import RawScoresOutputTarget
 from sklearn import metrics
 from torch.nn import functional as F
 
-from tame.utilities.composite_models import Generic
-
 from .avg_meter import AverageMeter
 
 
@@ -20,9 +18,10 @@ from .avg_meter import AverageMeter
 class AD_IC:
     model: torch.nn.Module
     img_size: int
-    train_method: str
+    train_method: str = "legacy"
     percent_list: List[float] = field(default_factory=lambda: [0.0, 0.5, 0.85])
     noisy_masks: bool = False
+    legacy_mode: bool = False
 
     def __post_init__(self):
         self.chosen_logits_list = []
@@ -43,6 +42,7 @@ class AD_IC:
             self.percent_list,
             self.noisy_masks,
             self.train_method,
+            self.legacy_mode
         )
         new_logits_list = [
             new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
@@ -214,6 +214,7 @@ def get_masked_inputs(
     percent: List[float],
     noisy_masks: bool = True,
     train_method: str = "old",
+    legacy_mode: bool = False,
 ) -> List[torch.Tensor]:
     B, C, _, _ = masks.size()
     if noisy_masks:
@@ -250,7 +251,7 @@ def get_masked_inputs(
         )
         normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         x_masked_ls = [normalize(mask * invTrans(inp)) for mask in masks_ls]
-    elif train_method == "legacy":
+    elif train_method == "legacy" or legacy_mode:
         x_masked_ls = [mask * inp for mask in masks_ls]
     else:
         raise NotImplementedError
