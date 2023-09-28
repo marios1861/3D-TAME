@@ -14,7 +14,7 @@ from pytorch_grad_cam import (
     ScoreCAM,
     XGradCAM,
 )
-from pytorch_grad_cam.ablation_layer import AblationLayerVit
+from pytorch_grad_cam.ablation_layer import AblationLayerVit, AblationLayer
 from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 
 from tame.masked_print import save_heatmap
@@ -31,12 +31,17 @@ def reshape_transform(tensor, height=14, width=14):
     return result
 
 
+def count_FP(self, input, output):
+    self.fp_count += 1
+
+
 # define the LightningModule
 class COMPAREVIT(pl.LightningModule):
     def __init__(
         self,
         name: str = "gradcam",
         raw_model=None,
+        mdl_name: str = "vit_b_16",
         img_size: int = 224,
         percent_list: List[float] = [0.0, 0.5, 0.85],
         num_classes: int = 1000,
@@ -62,21 +67,38 @@ class COMPAREVIT(pl.LightningModule):
             )
         else:
             self.raw_model = raw_model
-        target_layers = [self.raw_model.blocks[-1].norm1]  # type: ignore
+        self.raw_model.fp_count = 0
+        self.raw_model.register_forward_hook(count_FP)
+        if "vit" in mdl_name:
+            target_layers = [self.raw_model.blocks[-1].norm1]  # type: ignore
+        elif "vgg" in mdl_name:
+            target_layers = [self.raw_model.features[29]]  # type: ignore
+        elif "resnet" in mdl_name:
+            target_layers = [self.raw_model.layer4[-1]]  # type: ignore
+        else:
+            raise ValueError("Model not supported")
         if name == "ablationcam":
-            self.cam_model = cam_method[name](
-                model=self.raw_model,
-                target_layers=target_layers,
-                use_cuda=self.on_gpu,
-                reshape_transform=reshape_transform,
-                ablation_layer=AblationLayerVit(),  # type: ignore
-            )
+            if "vit" in mdl_name:
+                self.cam_model = cam_method[name](
+                    model=self.raw_model,
+                    target_layers=target_layers,
+                    use_cuda=True,
+                    reshape_transform=reshape_transform,
+                    ablation_layer=AblationLayerVit(),  # type: ignore
+                )
+            else:
+                self.cam_model = cam_method[name](
+                    model=self.raw_model,
+                    target_layers=target_layers,
+                    use_cuda=True,
+                    ablation_layer=AblationLayer(),  # type: ignore
+                )
         else:
             self.cam_model = cam_method[name](
                 model=self.raw_model,
                 target_layers=target_layers,  # type: ignore
                 reshape_transform=reshape_transform if raw_model is None else None,  # type: ignore
-                use_cuda=self.on_gpu,
+                use_cuda=True,
             )
         if name == "scorecam" or name == "ablationcam":
             self.cam_model.batch_size = 8  # type: ignore
@@ -86,6 +108,7 @@ class COMPAREVIT(pl.LightningModule):
             self.raw_model, img_size, percent_list=percent_list, legacy_mode=True
         )
         self.metric_ROAD = metrics.ROAD(self.raw_model, ROADMostRelevantFirst)
+        self.once = True
 
     def gen_explanation(self, dataloader, id):
         image, _ = dataloader.dataset[id]
@@ -143,9 +166,14 @@ class COMPAREVIT(pl.LightningModule):
 
             # this is the test loop
             logits = self.raw_model(images)
+            if self.once:
+                print(self.raw_model.fp_count)
             logits = logits.softmax(dim=1)
             chosen_logits, model_truth = logits.max(dim=1)
             masks = self.cam_model(input_tensor=images)
+            if self.once:
+                print(self.raw_model.fp_count)
+                self.once = False
             if numpy.isnan(masks).any():
                 print("NaNs in masks")
                 quit()
