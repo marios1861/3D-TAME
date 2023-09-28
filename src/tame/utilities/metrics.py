@@ -25,7 +25,7 @@ class AD_IC:
 
     def __post_init__(self):
         self.chosen_logits_list = []
-        self.new_logits_list = []            
+        self.new_logits_list = []
 
     @torch.no_grad()
     def __call__(
@@ -42,7 +42,7 @@ class AD_IC:
             self.percent_list,
             self.noisy_masks,
             self.train_method,
-            self.legacy_mode
+            self.legacy_mode,
         )
         new_logits_list = [
             new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
@@ -292,9 +292,9 @@ def get_AUC(gt_labels, pred_scores):
 
 
 def get_AD(original_logits: torch.Tensor, new_logits: torch.Tensor) -> torch.Tensor:
-    AD = ((original_logits - new_logits).clip(min=0) / original_logits).sum() * (
-        100 / original_logits.size()[0]
-    )
+    AD = (
+        torch.nan_to_num((original_logits - new_logits).clip(min=0) / original_logits)
+    ).sum() * (100 / original_logits.size()[0])
     return AD
 
 
