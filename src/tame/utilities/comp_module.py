@@ -105,7 +105,7 @@ class COMPAREVIT(pl.LightningModule):
         self.img_size = img_size
         self.eval_length = eval_length
         self.metric_AD_IC = metrics.AD_IC(
-            self.raw_model, img_size, percent_list=percent_list, legacy_mode=True
+            self.raw_model, img_size, percent_list=percent_list, train_method="new"
         )
         self.metric_ROAD = metrics.ROAD(self.raw_model, ROADMostRelevantFirst)
         self.once = True
