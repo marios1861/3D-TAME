@@ -56,7 +56,10 @@ class TAMELIT(pl.LightningModule):
         self.generic = ut.get_model(self.cfg)
         self.attention_version = attention_version
         # threshold is 0 because we use un-normalized logits to save on computation time
-        self.accuracy = torchmetrics.Accuracy(
+        self.train_accuracy = torchmetrics.Accuracy(
+            task="multiclass", num_classes=num_classes, threshold=0
+        )
+        self.val_accuracy = torchmetrics.Accuracy(
             task="multiclass", num_classes=num_classes, threshold=0
         )
         self.img_size = img_size
@@ -83,14 +86,14 @@ class TAMELIT(pl.LightningModule):
             mean_mask,
             var,
         ) = self.generic.get_loss(logits, labels, masks)
-        self.accuracy(logits, labels)
+        self.train_accuracy(logits, labels)
         self.log_dict(
             {
                 "training/Loss": loss,
                 "training/CE": ce,
                 "training/Mean": mean_mask,
                 "training/Var": var,
-                "training/Accuracy": self.accuracy,
+                "training/Accuracy": self.train_accuracy,
             },
             sync_dist=True,
         )
@@ -123,14 +126,14 @@ class TAMELIT(pl.LightningModule):
             mean_mask,
             var,
         ) = self.generic.get_loss(logits, labels, masks)
-        self.accuracy(logits, labels)
+        self.val_accuracy(logits, labels)
         self.log_dict(
             {
                 "validation/loss": loss,
                 "validation/ce": ce,
                 "validation/mean": mean_mask,
                 "validation/var": var,
-                "validation/accuracy": self.accuracy,
+                "validation/accuracy": self.val_accuracy,
             },
             sync_dist=True,
         )
