@@ -16,12 +16,13 @@ os.environ["MASTER_ADDR"] = "160.40.53.85"
 os.environ["MASTER_PORT"] = "12345"
 os.environ["WORLD_SIZE"] = "3"
 torch.set_float32_matmul_precision("medium")
-version = "TAME"
-model_name = "resnet50"
+
+version = "Sigmoidinfeaturebranch"
+model_name = "vit_b_16"
 layers = [
-    "layer2",
-    "layer3",
-    "layer4",
+    "encoder.layers.encoder_layer_9",
+    "encoder.layers.encoder_layer_10",
+    "encoder.layers.encoder_layer_11",
 ]
 epochs = 8
 
@@ -29,7 +30,7 @@ model = TAMELIT(
     model_name=model_name,
     layers=layers,
     attention_version=version,
-    train_method="legacy",
+    train_method="new",
     schedule="NEW",
     lr=0.001,
     epochs=epochs,
@@ -41,7 +42,6 @@ dataset = LightnightDataset(
     datalist_path=Path(os.getenv("LIST", "./")),
     model=model_name,
     batch_size=32,
-    legacy=True,
 )
 
 checkpointer = ModelCheckpoint(every_n_epochs=1, save_on_train_epoch_end=False)
@@ -64,5 +64,5 @@ trainer.test(model, dataset)
 send_email(
     version + "_" + model_name,
     os.environ["PASS"],
-    "resnet TAME run complete, check results and run vit_b_16 V5 next",
+    "vit_b_16 TAME run complete, check results and run GradCam next",
 )
