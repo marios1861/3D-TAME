@@ -47,6 +47,7 @@ class COMPAREVIT(pl.LightningModule):
         num_classes: int = 1000,
         eval_length: str = "long",
         example_gen: bool = False,
+        once=True,
     ):
         super().__init__()
         self.method = name
@@ -108,7 +109,10 @@ class COMPAREVIT(pl.LightningModule):
             self.raw_model, img_size, percent_list=percent_list, train_method="new"
         )
         self.metric_ROAD = metrics.ROAD(self.raw_model, ROADMostRelevantFirst)
-        self.once = True
+        if once:
+            self.once = True
+        else:
+            self.once = False
 
     def gen_explanation(self, dataloader, id):
         image, _ = dataloader.dataset[id]
