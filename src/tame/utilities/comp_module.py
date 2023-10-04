@@ -14,10 +14,14 @@ from pytorch_grad_cam import (
     ScoreCAM,
     XGradCAM,
 )
-from pytorch_grad_cam.ablation_layer import AblationLayerVit, AblationLayer
+from pytorch_grad_cam.ablation_layer import AblationLayer, AblationLayerVit
 from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 
 from tame.masked_print import save_heatmap
+from tame.transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
+from tame.transformer_explainability.baselines.ViT.ViT_LRP import (
+    vit_base_patch16_224 as vit_LRP,
+)
 
 from . import metrics
 
@@ -44,7 +48,6 @@ class COMPAREVIT(pl.LightningModule):
         mdl_name: str = "vit_b_16",
         img_size: int = 224,
         percent_list: List[float] = [0.0, 0.5, 0.85],
-        num_classes: int = 1000,
         eval_length: str = "long",
         example_gen: bool = False,
         once=True,
@@ -177,6 +180,130 @@ class COMPAREVIT(pl.LightningModule):
             masks = self.cam_model(input_tensor=images)
             if self.once:
                 print(self.raw_model.fp_count)
+                self.once = False
+            if numpy.isnan(masks).any():
+                print("NaNs in masks")
+                quit()
+            masks = torch.tensor(masks).unsqueeze(dim=1).to(self.device)
+            masks = metrics.normalizeMinMax(masks)
+
+            self.metric_AD_IC(images, chosen_logits, model_truth, masks)
+            masks = torch.nn.functional.interpolate(
+                masks,
+                size=(self.img_size, self.img_size),
+                mode="bilinear",
+                align_corners=False,
+            )
+            if self.eval_length == "long":
+                masks = masks.squeeze().cpu().detach().numpy()
+                self.metric_ROAD(images, model_truth, masks)
+
+
+class HILAVIT(pl.LightningModule):
+    def __init__(
+        self,
+        img_size: int = 224,
+        percent_list: List[float] = [0.0, 0.5, 0.85],
+        eval_length: str = "long",
+        example_gen: bool = False,
+    ):
+        super().__init__()
+        self.model = vit_LRP(pretrained=True)
+        self.attribution_generator = LRP(self.model)
+        self.model.eval()
+
+        def gen_mask(image):
+            transformer_attribution = self.attribution_generator.generate_LRP(
+                image.cuda(),
+                method="transformer_attribution",
+            ).detach()
+            transformer_attribution = transformer_attribution.reshape(1, 1, 14, 14)
+            transformer_attribution = torch.nn.functional.interpolate(
+                transformer_attribution, scale_factor=16, mode="bilinear"
+            )
+            transformer_attribution = (
+                transformer_attribution.reshape(1, 224, 224).cuda().data.cpu().numpy()
+            )
+            transformer_attribution = (
+                transformer_attribution - transformer_attribution.min()
+            ) / (transformer_attribution.max() - transformer_attribution.min())
+            return transformer_attribution
+
+        self.gen_mask = gen_mask
+        self.model.fp_count = 0  # type: ignore
+        self.model.register_forward_hook(count_FP)
+
+        self.img_size = img_size
+        self.eval_length = eval_length
+        self.metric_AD_IC = metrics.AD_IC(
+            self.model, img_size, percent_list=percent_list, train_method="new"
+        )
+        self.metric_ROAD = metrics.ROAD(self.model, ROADMostRelevantFirst)
+        self.once = True
+
+    def gen_explanation(self, dataloader, id):
+        image, _ = dataloader.dataset[id]
+        image = image.unsqueeze(0)
+        mask = torch.tensor(self.gen_mask(image))
+        image = image.squeeze()
+        save_heatmap(
+            mask,
+            image,
+            Path(".") / "examples" / f"vit_hila_{id}.jpg",
+        )
+
+    def on_test_epoch_end(self):
+        self.ADs, self.ICs = self.metric_AD_IC.get_results()
+        if self.eval_length == "long":
+            self.ROADs = self.metric_ROAD.get_results()
+            self.log_dict(
+                {
+                    "AD 100%": torch.tensor(self.ADs[0]),
+                    "IC 100%": torch.tensor(self.ICs[0]),
+                    "AD 50%": torch.tensor(self.ADs[1]),
+                    "IC 50%": torch.tensor(self.ICs[1]),
+                    "AD 15%": torch.tensor(self.ADs[2]),
+                    "IC 15%": torch.tensor(self.ICs[2]),
+                    "ROAD 10%": torch.tensor(self.ROADs[0]),
+                    "ROAD 20%": torch.tensor(self.ROADs[1]),
+                    "ROAD 30%": torch.tensor(self.ROADs[2]),
+                    "ROAD 40%": torch.tensor(self.ROADs[3]),
+                    "ROAD 50%": torch.tensor(self.ROADs[4]),
+                    "ROAD 70%": torch.tensor(self.ROADs[5]),
+                    "ROAD 90%": torch.tensor(self.ROADs[6]),
+                }
+            )
+        else:
+            self.log_dict(
+                {
+                    "AD 100%": torch.tensor(self.ADs[0]),
+                    "IC 100%": torch.tensor(self.ICs[0]),
+                    "AD 50%": torch.tensor(self.ADs[1]),
+                    "IC 50%": torch.tensor(self.ICs[1]),
+                    "AD 15%": torch.tensor(self.ADs[2]),
+                    "IC 15%": torch.tensor(self.ICs[2]),
+                }
+            )
+
+    def on_test_model_eval(self, *args, **kwargs):
+        super().on_test_model_eval(*args, **kwargs)
+        torch.set_grad_enabled(True)
+
+    def test_step(self, batch, batch_idx):
+        with torch.inference_mode(False):
+            images, labels = batch
+            images = images.clone()
+            labels = labels.clone()
+
+            # this is the test loop
+            logits = self.model(images)
+            if self.once:
+                print(self.model.fp_count)
+            logits = logits.softmax(dim=1)
+            chosen_logits, model_truth = logits.max(dim=1)
+            masks = self.gen_mask(images)
+            if self.once:
+                print(self.model.fp_count)
                 self.once = False
             if numpy.isnan(masks).any():
                 print("NaNs in masks")
