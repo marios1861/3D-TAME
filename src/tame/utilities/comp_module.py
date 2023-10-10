@@ -221,12 +221,6 @@ class HILAVIT(pl.LightningModule):
             transformer_attribution = torch.nn.functional.interpolate(
                 transformer_attribution, scale_factor=16, mode="bilinear"
             )
-            transformer_attribution = (
-                transformer_attribution.reshape(1, 224, 224).cuda().data.cpu().numpy()
-            )
-            transformer_attribution = (
-                transformer_attribution - transformer_attribution.min()
-            ) / (transformer_attribution.max() - transformer_attribution.min())
             return transformer_attribution
 
         self.gen_mask = gen_mask
@@ -305,12 +299,7 @@ class HILAVIT(pl.LightningModule):
             if self.once:
                 print(self.model.fp_count)
                 self.once = False
-            if numpy.isnan(masks).any():
-                print("NaNs in masks")
-                quit()
-            masks = torch.tensor(masks).unsqueeze(dim=1).to(self.device)
             masks = metrics.normalizeMinMax(masks)
-
             self.metric_AD_IC(images, chosen_logits, model_truth, masks)
             masks = torch.nn.functional.interpolate(
                 masks,
@@ -319,5 +308,5 @@ class HILAVIT(pl.LightningModule):
                 align_corners=False,
             )
             if self.eval_length == "long":
-                masks = masks.squeeze().cpu().detach().numpy()
+                masks = masks.squeeze(0).cpu().detach().numpy()
                 self.metric_ROAD(images, model_truth, masks)

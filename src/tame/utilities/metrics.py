@@ -65,12 +65,20 @@ class AD_IC:
         metrics = []
         chosen_logits = torch.cat(self.chosen_logits_list)
         for new_logits in self.new_logits_list:
-            metrics.append(
-                (
-                    get_AD(chosen_logits, torch.cat(new_logits)).item(),
-                    get_IC(chosen_logits, torch.cat(new_logits)).item(),
+            try:
+                metrics.append(
+                    (
+                        get_AD(chosen_logits, torch.cat(new_logits)).item(),
+                        get_IC(chosen_logits, torch.cat(new_logits)).item(),
+                    )
                 )
-            )
+            except RuntimeError:
+                metrics.append(
+                    (
+                        get_AD(chosen_logits, torch.tensor(new_logits)).item(),
+                        get_IC(chosen_logits, torch.tensor(new_logits)).item(),
+                    )
+                )
         return [metric[0] for metric in metrics], [metric[1] for metric in metrics]
 
 
