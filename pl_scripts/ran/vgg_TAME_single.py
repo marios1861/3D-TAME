@@ -7,9 +7,8 @@ from dotenv import load_dotenv
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger, TensorBoardLogger
 
-from tame.utilities import send_email, COMPAREVIT
+from tame.utilities import send_email
 from tame.utilities.pl_module import TAMELIT, LightnightDataset
-
 
 load_dotenv()
 
@@ -18,16 +17,24 @@ os.environ["MASTER_PORT"] = "12345"
 os.environ["WORLD_SIZE"] = "3"
 torch.set_float32_matmul_precision("medium")
 
-version = "gradcam"
-model_name = "vit_b_16"
+version = "TAME"
+model_name = "vgg16"
 layers = [
-    "encoder.layers.encoder_layer_9",
-    "encoder.layers.encoder_layer_10",
-    "encoder.layers.encoder_layer_11",
+    "features.15",
+    "features.22",
+    "features.29",
 ]
 epochs = 8
 
-model = COMPAREVIT()
+model = TAMELIT(
+    model_name=model_name,
+    layers=layers,
+    attention_version=version,
+    train_method="new",
+    schedule="NEW",
+    lr=0.001,
+    epochs=epochs,
+)
 # model: pl.LightningModule = torch.compile(model)  # type: ignore
 
 dataset = LightnightDataset(
@@ -37,12 +44,25 @@ dataset = LightnightDataset(
     batch_size=32,
 )
 
+checkpointer = ModelCheckpoint(every_n_epochs=1, save_on_train_epoch_end=False)
+
 # torch._dynamo.config.verbose=True
-trainer = pl.Trainer()
+trainer = pl.Trainer(
+    # precision="16-mixed",
+    # gradient_clip_algorithm="norm",
+    max_epochs=epochs,
+    callbacks=[checkpointer],
+)
+trainer.logger = TensorBoardLogger(
+    "logs", name=(version + "_" + model_name), sub_dir="tb_logs"
+)
+trainer.fit(model, dataset)
+
+
 trainer.logger = CSVLogger("logs", name=(version + "_" + model_name))
 trainer.test(model, dataset)
 send_email(
     version + "_" + model_name,
     os.environ["PASS"],
-    "vit_b_16 gradcam run complete, check results and run vit_b_16 gradcam++ next",
+    "vgg16 TAME new norm run complete, check results and run hila method on vit next",
 )

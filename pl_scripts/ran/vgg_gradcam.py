@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger, TensorBoardLogger
 
-from tame.utilities import send_email, COMPAREVIT
+from tame.utilities import send_email, COMPAREVIT, model_prep
 from tame.utilities.pl_module import TAMELIT, LightnightDataset
 
 
@@ -19,16 +19,10 @@ os.environ["WORLD_SIZE"] = "3"
 torch.set_float32_matmul_precision("medium")
 
 version = "gradcam"
-model_name = "vit_b_16"
-layers = [
-    "encoder.layers.encoder_layer_9",
-    "encoder.layers.encoder_layer_10",
-    "encoder.layers.encoder_layer_11",
-]
-epochs = 8
+model_name = "vgg16"
 
-model = COMPAREVIT()
-# model: pl.LightningModule = torch.compile(model)  # type: ignore
+mdl = model_prep(model_name)
+model = COMPAREVIT(name=version, raw_model=mdl, mdl_name=model_name, eval_length="short")
 
 dataset = LightnightDataset(
     dataset_path=Path(os.getenv("DATA", "./")),

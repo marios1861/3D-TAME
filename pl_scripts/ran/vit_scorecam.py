@@ -34,7 +34,7 @@ dataset = LightnightDataset(
     dataset_path=Path(os.getenv("DATA", "./")),
     datalist_path=Path(os.getenv("LIST", "./")),
     model=model_name,
-    batch_size=32,
+    batch_size=16,
 )
 
 # torch._dynamo.config.verbose=True
