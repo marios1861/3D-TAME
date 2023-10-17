@@ -1,10 +1,13 @@
 from pathlib import Path
 from typing import List, Optional
+import cv2
 
 import lightning.pytorch as pl
+import numpy as np
 import torch
 import torchmetrics
 import torchvision.transforms as transforms
+import torchshow as ts
 from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 from torch.utils.data import DataLoader
 
@@ -176,6 +179,35 @@ class TAMELIT(pl.LightningModule):
                 }
             )
 
+    @torch.no_grad()
+    def save_masked_image(self, image, id, model_name):
+        self.generic.noisy_masks = "diagonal"
+        self.generic.eval()
+        image = image.unsqueeze(0).to(self.device)
+        ts.save(image, f"_torchshow/{model_name}/image{id}.png")
+        logits = self.generic(image)
+        logits = logits.softmax(dim=1)
+        chosen_logits, model_truth = logits.max(dim=1)
+        mask = self.generic.get_c(model_truth)
+        mask = metrics.normalizeMinMax(mask)
+        ts.save(mask, f"_torchshow/{model_name}/small_mask{id}.png")
+        mask = torch.nn.functional.interpolate(
+            mask,
+            size=(self.img_size, self.img_size),
+            mode="bilinear",
+            align_corners=False,
+        )
+        ts.save(mask, f"_torchshow/{model_name}/big_mask{id}.png")
+        ts.save(mask * image, f"_torchshow/{model_name}/masked_image{id}.png")
+        opencvImage = cv2.cvtColor(
+            image.squeeze().permute(1, 2, 0).cpu().numpy(), cv2.COLOR_RGB2BGR
+        )
+        opencvImage = (np.asarray(opencvImage, np.float32) * 255).astype(np.uint8)
+        np_mask = np.array(mask.squeeze().cpu().numpy() * 255, dtype=np.uint8)
+        np_mask = cv2.applyColorMap(np_mask, cv2.COLORMAP_JET)
+        mask_image = cv2.addWeighted(np_mask, 0.5, opencvImage, 0.5, 0)
+        cv2.imwrite(f"_torchshow/{model_name}/cv_masked_image{id}.png", mask_image)
+
     def test_step(self, batch, batch_idx):
         # this is the test loop
         images, labels = batch
@@ -324,6 +356,7 @@ class LightnightDataset(pl.LightningDataModule):
             self.datalist_path / "Evaluation_2000.txt",
             transform=tsfm_val,
         )
+        self.test_dataset = dataset_test
 
         test_loader = DataLoader(
             dataset_test,

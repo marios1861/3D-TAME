@@ -20,3 +20,4 @@ hparams.yaml
 *lightning_logs/
 old models/
 *logs/
+_torchshow/
