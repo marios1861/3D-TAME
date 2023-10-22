@@ -1,5 +1,6 @@
 # checked, should be working correctly
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union, Tuple
+from typing_extensions import Literal
 
 import torch
 import torch.nn as nn
@@ -20,19 +21,26 @@ class Generic(nn.Module):
         self,
         name: str,
         mdl: nn.Module,
-        feature_layers: List[str],
-        attn_version: str,
-        noisy_masks: str = "random",
-        train_method: str = "new",
+        feature_layers: Optional[List[str]],
+        attention_version: str,
+        masking: Literal["random", "diagonal", "max"] = "random",
+        train_method: Literal[
+            "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
+        ] = "new",
+        input_dim: Optional[torch.Size] = None,
+        num_classes=1000,
     ):
         """Args:
         mdl (nn.Module): the model which we would like to use for interpretability
         feature_layers (list): the layers, as printed by get_graph_node_names,
             which we would like to get feature maps from
         """
-        super(Generic, self).__init__()
+        super().__init__()
         # get model feature extractor
         train_names, eval_names = get_graph_node_names(mdl)
+        if feature_layers == [] or feature_layers is None:
+            print(train_names)
+            quit()
 
         output = (train_names[-1], eval_names[-1])
         if output[0] != output[1]:
@@ -45,7 +53,10 @@ class Generic(nn.Module):
         )
 
         # Dry run to get number of channels for the attention mechanism
-        inp = torch.randn(2, 3, 224, 224)
+        if input_dim:
+            inp = torch.randn(input_dim)
+        else:
+            inp = torch.randn(2, 3, 224, 224)
         self.body.eval()
         with torch.no_grad():
             out = self.body(inp)
@@ -55,10 +66,19 @@ class Generic(nn.Module):
         ft_size = [o.shape for o in out.values()]
 
         # Build AM
-        self.attn_mech = AMBuilder.create_attention(name, mdl, attn_version, ft_size)
+        if num_classes != 1000:
+            self.attn_mech = AMBuilder.create_attention(
+                name, mdl, attention_version, ft_size, num_classes=num_classes
+            )
+        else:
+            self.attn_mech = AMBuilder.create_attention(
+                name, mdl, attention_version, ft_size
+            )
         # Get loss and forward training method
-        self.arr = train_method
-        self.arrangement = Arrangement(self.arr, self.body, self.output)
+        self.train_method: Literal[
+            "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
+        ] = train_method
+        self.arrangement = Arrangement(self.train_method, self.body, self.output)
         self.train_policy, self.get_loss = (
             self.arrangement.train_policy,
             self.arrangement.loss,
@@ -66,18 +86,19 @@ class Generic(nn.Module):
 
         self.a: Optional[torch.Tensor] = None
         self.c: Optional[torch.Tensor] = None
-        self.noisy_masks = noisy_masks
+        self.masking: Literal["random", "diagonal", "max"] = masking
 
     def forward(
-        self, x: torch.Tensor, label: Optional[torch.LongTensor] = None
-    ) -> torch.Tensor:
-        if self.arr == "legacy":
+        self, x: torch.Tensor
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        if self.train_method == "raw_normalize":
             x_norm = Generic.normalization(x)
         else:
             x_norm = x
 
         features: Dict[str, torch.Tensor] = self.body(x_norm)
-        x_norm = features.pop(self.output)
+        old_logits = features.pop(self.output)
+        label = old_logits.argmax(dim=1)
 
         # features now only has the feature maps since we popped the output in case we are in eval mode
 
@@ -88,31 +109,33 @@ class Generic(nn.Module):
         # if in training mode we need to do another forward pass with our masked input as input
 
         if self.training:
-            assert label is not None
             logits = self.train_policy(a, label, x)
             self.logits = logits
-            return logits
+            return logits, label
         else:
-            self.logits = x_norm
-            return x_norm
+            self.logits = old_logits
+            return old_logits
 
     @staticmethod
     def select_max_masks(
         masks: torch.Tensor, logits: torch.Tensor, N: int
     ) -> torch.Tensor:
         """Select the N masks with the max logits"""
-        max_indexes = logits.topk(N)[1]
+        if logits.size(0) < N:
+            max_indexes = logits.topk(logits.size(0))[1]
+        else:
+            max_indexes = logits.topk(N)[1]
         return masks[max_indexes, :, :]
 
     def get_c(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.c is not None
-        if self.noisy_masks == "random":
+        if self.masking == "random":
             return self.c[:, labels, :, :]
-        elif self.noisy_masks == "diagonal":
+        elif self.masking == "diagonal":
             batches = self.c.size(0)
             return self.c[torch.arange(batches), labels, :, :].unsqueeze(1)
 
-        elif self.noisy_masks == "max":
+        elif self.masking == "max":
             batched_select_max_masks = torch.vmap(
                 Generic.select_max_masks, in_dims=(0, 0, None)
             )
@@ -122,12 +145,12 @@ class Generic(nn.Module):
 
     def get_a(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.a is not None
-        if self.noisy_masks == "random":
+        if self.masking == "random":
             return self.a[:, labels, :, :]
-        elif self.noisy_masks == "diagonal":
+        elif self.masking == "diagonal":
             batches = self.a.size(0)
             return self.a[torch.arange(batches), labels, :, :].unsqueeze(1)
-        elif self.noisy_masks == "max":
+        elif self.masking == "max":
             batched_select_max_masks = torch.vmap(
                 Generic.select_max_masks, in_dims=(0, 0, None)
             )
@@ -139,14 +162,12 @@ class Generic(nn.Module):
 class Arrangement(nn.Module):
     r"""The train_policy and get_loss components of Generic"""
 
-    def __init__(
-        self, version: str, body: nn.Module, output_name: str, noisy_masks=True
-    ):
+    def __init__(self, version: str, body: nn.Module, output_name: str):
         super(Arrangement, self).__init__()
         arrangements = {
             "new": (self.new_train_policy, self.classic_loss),
-            "old": (self.old_train_policy, self.classic_loss),
-            "legacy": (self.legacy_train_policy, self.classic_loss),
+            "renormalize": (self.old_train_policy, self.classic_loss),
+            "raw_normalize": (self.legacy_train_policy, self.classic_loss),
             "layernorm": (self.ln_train_policy, self.classic_loss),
             "batchnorm": (self.bn_train_policy, self.classic_loss),
         }
@@ -160,18 +181,11 @@ class Arrangement(nn.Module):
         self.body = body
         self.output_name = output_name
 
-        if noisy_masks:
-            self.ce_coeff = 1.5  # lambda3
-            self.area_loss_coeff = 2  # lambda2
-            self.smoothness_loss_coeff = 0.01  # lambda1
-            self.area_loss_power = 0.3  # lambda4
-        else:
-            self.ce_coeff = 1.7  # lambda3
-            self.area_loss_coeff = 1.5  # lambda2
-            self.smoothness_loss_coeff = 0.1  # lambda1
-            self.area_loss_power = 0.3  # lambda4
+        self.ce_coeff = 1.7  # lambda3
+        self.area_loss_coeff = 1.5  # lambda2
+        self.smoothness_loss_coeff = 0.1  # lambda1
+        self.area_loss_power = 0.3  # lambda4
 
-        self.extra_masks = None
         self.train_policy, self.loss = arrangements[version]
 
     def area_loss(self, masks):
@@ -182,25 +196,52 @@ class Arrangement(nn.Module):
 
     @staticmethod
     def smoothness_loss(masks, power=2, border_penalty=0.3):
-        B, _, _, _ = masks.size()
-        x_loss = torch.sum(
-            (torch.abs(masks[:, :, 1:, :] - masks[:, :, :-1, :])) ** power
-        )
-        y_loss = torch.sum(
-            (torch.abs(masks[:, :, :, 1:] - masks[:, :, :, :-1])) ** power
-        )
-        if border_penalty > 0:
-            border = float(border_penalty) * torch.sum(
-                masks[:, :, -1, :] ** power
-                + masks[:, :, 0, :] ** power
-                + masks[:, :, :, -1] ** power
-                + masks[:, :, :, 0] ** power
+        if masks.dim() == 4:
+            B, _, _, _ = masks.size()
+            x_loss = torch.sum(
+                (torch.abs(masks[:, :, 1:, :] - masks[:, :, :-1, :])) ** power
             )
+            y_loss = torch.sum(
+                (torch.abs(masks[:, :, :, 1:] - masks[:, :, :, :-1])) ** power
+            )
+            if border_penalty > 0:
+                border = float(border_penalty) * torch.sum(
+                    masks[:, :, -1, :] ** power
+                    + masks[:, :, 0, :] ** power
+                    + masks[:, :, :, -1] ** power
+                    + masks[:, :, :, 0] ** power
+                )
+            else:
+                border = 0.0
+            return (x_loss + y_loss + border) / float(
+                power * B
+            )  # watch out, normalised by the batch size!
         else:
-            border = 0.0
-        return (x_loss + y_loss + border) / float(
-            power * B
-        )  # watch out, normalised by the batch size!
+            B, _, _, _, _ = masks.size()
+            x_loss = torch.sum(
+                (torch.abs(masks[:, :, :, 1:, :] - masks[:, :, :, :-1, :])) ** power
+            )
+            y_loss = torch.sum(
+                (torch.abs(masks[:, :, :, :, 1:] - masks[:, :, :, :, :-1])) ** power
+            )
+            z_loss = torch.sum(
+                (torch.abs(masks[:, :, 1:, :, :] - masks[:, :, :-1, :, :])) ** power
+            )
+
+            if border_penalty > 0:
+                border = float(border_penalty) * torch.sum(
+                    (masks[:, :, :, -1, :] ** power).sum()
+                    + (masks[:, :, :, 0, :] ** power).sum()
+                    + (masks[:, :, :, :, -1] ** power).sum()
+                    + (masks[:, :, :, :, 0] ** power).sum()
+                    + (masks[:, :, -1, :, :] ** power).sum()
+                    + (masks[:, :, 0, :, :] ** power).sum()
+                )
+            else:
+                border = 0.0
+            return (x_loss + y_loss + z_loss + border) / float(
+                power * B
+            )  # watch out, normalised by the batch size!
 
     def classic_loss(
         self, logits: torch.Tensor, labels: torch.Tensor, masks: torch.Tensor
@@ -242,10 +283,16 @@ class Arrangement(nn.Module):
         self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
     ) -> torch.Tensor:
         batches = masks.size(0)
-        masks = masks[torch.arange(batches), labels, :, :].unsqueeze(1)
-        masks = F.interpolate(
-            masks, size=(224, 224), mode="bilinear", align_corners=False
-        )
+        if masks.dim() == 4:
+            masks = masks[torch.arange(batches), labels, :, :].unsqueeze(1)
+            masks = F.interpolate(
+                masks, size=(224, 224), mode="bilinear", align_corners=False
+            )
+        else:
+            masks = masks[torch.arange(batches), labels, :, :, :].unsqueeze(1)
+            masks = F.interpolate(
+                masks, size=inp.shape[-3:], mode="trilinear", align_corners=False
+            )
         x_norm = masks * inp
         return self.body(x_norm)[self.output_name]
 

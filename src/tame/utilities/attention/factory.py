@@ -9,7 +9,7 @@ from tame.utilities.attention.old_attention import (
     AttentionV3d2dd1,
     AttentionV5d1,
 )
-from tame.utilities.attention.tame import AttentionTAME
+from tame.utilities.attention.tame import AttentionTAME, Attention3DTAME
 from tame.utilities.attention.tattentionv1 import (
     TAttentionV1,
     TAttentionV1_1,
@@ -26,6 +26,7 @@ from tame.utilities.attention.tattentionv3 import TAttentionV3
 class AMBuilder(object):
     r"""The attention mechanism component of Generic"""
     versions: ClassVar[Dict[str, Type[AttentionMech]]] = {
+        "3D-TAME": Attention3DTAME,
         "TAME": AttentionTAME,
         "Noskipconnection": AttentionV3d2dd1,
         "NoskipNobatchnorm": AttentionV3d2,
@@ -45,7 +46,7 @@ class AMBuilder(object):
 
     @classmethod
     def create_attention(
-        cls, mdl_name: str, mdl: nn.Module, version: str, ft_size: List[torch.Size]
+        cls, mdl_name: str, mdl: nn.Module, version: str, ft_size: List[torch.Size], num_classes=1000
     ) -> nn.Module:
         """ Build Attention mechanism based on version and model
 
@@ -65,30 +66,41 @@ class AMBuilder(object):
         try:
             # Build Attention mechanism
             # Vision Transformer and not TAttention type attention module
-            if is_transformer(mdl) and "TAttention" not in version:
+            if is_transformer(mdl, ft_size[0]) and "TAttention" not in version:
                 if "vit_b_16" == mdl_name:
-                    ft_size = [torch.Size([2, 768, 14, 14]) for _ in ft_size]
+                    ft_size = [torch.Size([2, ft[-1], 14, 14]) for ft in ft_size]
                 else:
                     raise NotImplementedError(
                         f"TAME not implemented for the transformer {mdl_name}."
                     )
-                attn_mech = cls.versions[version](ft_size)
+                if num_classes != 1000:
+                    attn_mech = cls.versions[version](ft_size, num_classes=num_classes)
+                else:
+                    attn_mech = cls.versions[version](ft_size)
                 attn_mech = nn.Sequential(PreprocessSeq(mdl_name), attn_mech)
             # CNN and TAttention type attention module
-            elif not is_transformer(mdl) and "TAttention" in version:
+            elif not is_transformer(mdl, ft_size[0]) and "TAttention" in version:
                 ft_size = [torch.Size([ft[0], ft[2] * ft[3], ft[1]]) for ft in ft_size]
-                attn_mech = cls.versions[version](ft_size)
+                if num_classes != 1000:
+                    attn_mech = cls.versions[version](ft_size, num_classes=num_classes)
+                else:
+                    attn_mech = cls.versions[version](ft_size)
                 attn_mech = nn.Sequential(PreprocessSeq("cnn"), attn_mech)
             # CNN and not Tattention type attention module or Vision Transformer and
             # TAttention type attention module
             else:
-                attn_mech = cls.versions[version](ft_size)
+                if num_classes != 1000:
+                    attn_mech = cls.versions[version](ft_size, num_classes=num_classes)
+                else:
+                    attn_mech = cls.versions[version](ft_size)
             return attn_mech
         except KeyError:
             raise NotImplementedError(version)
 
 
-def is_transformer(mdl: nn.Module) -> bool:
+def is_transformer(mdl: nn.Module, ft_size: torch.Size) -> bool:
+    if len(ft_size) == 3:
+        return True
     for module in mdl.modules():
         if isinstance(module, nn.MultiheadAttention):
             return True

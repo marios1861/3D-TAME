@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Union
 
 import lightning.pytorch as pl
 import numpy
 import torch
+from lightning.pytorch.loggers import WandbLogger
 from pytorch_grad_cam import (
     AblationCAM,
     EigenCAM,
@@ -40,17 +41,20 @@ def count_FP(self, input, output):
 
 
 # define the LightningModule
-class COMPAREVIT(pl.LightningModule):
+class CompareModel(pl.LightningModule):
     def __init__(
         self,
         name: str = "gradcam",
         raw_model=None,
+        target_layers=None,
+        stats=None,
+        normalized_data=True,
         mdl_name: str = "vit_b_16",
-        img_size: int = 224,
+        input_dim: Optional[torch.Size] = None,
+        img_size: Union[int, List[int]] = 224,
         percent_list: List[float] = [0.0, 0.5, 0.85],
         eval_length: str = "long",
-        example_gen: bool = False,
-        once=True,
+        count_fp=True,
     ):
         super().__init__()
         self.method = name
@@ -66,21 +70,25 @@ class COMPAREVIT(pl.LightningModule):
             # "fullgrad": FullGrad,
         }
         if raw_model is None:
-            self.raw_model = torch.hub.load(
-                "facebookresearch/deit:main", "deit_tiny_patch16_224", pretrained=True
-            )
+            import timm
+
+            self.raw_model = timm.create_model("deit_tiny_patch16_224", pretrained=True)
         else:
             self.raw_model = raw_model
         self.raw_model.fp_count = 0
         self.raw_model.register_forward_hook(count_FP)
-        if "vit" in mdl_name:
+        if target_layers is not None:
+            pass
+        elif "vit" in mdl_name:
             target_layers = [self.raw_model.blocks[-1].norm1]  # type: ignore
         elif "vgg" in mdl_name:
             target_layers = [self.raw_model.features[29]]  # type: ignore
         elif "resnet" in mdl_name:
             target_layers = [self.raw_model.layer4[-1]]  # type: ignore
         else:
-            raise ValueError("Model not supported")
+            raise ValueError(
+                "Model not supported by default and target_layers not specified"
+            )
         if name == "ablationcam":
             if "vit" in mdl_name:
                 self.cam_model = cam_method[name](
@@ -101,65 +109,105 @@ class COMPAREVIT(pl.LightningModule):
             self.cam_model = cam_method[name](
                 model=self.raw_model,
                 target_layers=target_layers,  # type: ignore
-                reshape_transform=reshape_transform if raw_model is None else None,  # type: ignore
+                reshape_transform=reshape_transform if raw_model is None or "vit" in mdl_name else None,  # type: ignore
                 use_cuda=True,
             )
         if name == "scorecam" or name == "ablationcam":
             self.cam_model.batch_size = 8  # type: ignore
-        self.img_size = img_size
+        if input_dim:
+            self.img_size = list(input_dim[-3:])
+        else:
+            self.img_size = img_size
         self.eval_length = eval_length
         self.metric_AD_IC = metrics.AD_IC(
-            self.raw_model, img_size, percent_list=percent_list, train_method="new"
+            self.raw_model,
+            self.img_size,
+            percent_list=percent_list,
+            normalized_data=normalized_data,
+            stats=stats,
         )
         self.metric_ROAD = metrics.ROAD(self.raw_model, ROADMostRelevantFirst)
-        if once:
-            self.once = True
-        else:
-            self.once = False
+        self.count_fp = count_fp
 
-    def gen_explanation(self, dataloader, id):
-        image, _ = dataloader.dataset[id]
-        image = image.unsqueeze(0)
-        mask = torch.tensor(self.cam_model(input_tensor=image))
-        image = image.squeeze()
-        save_heatmap(
-            mask,
-            image,
-            Path(".") / "examples" / f"vit_{self.method}_{id}.jpg",
-        )
+    def get_3dmask(self, image):
+        with torch.set_grad_enabled(True):
+            image = image.unsqueeze(0)
+            image.requires_grad = True
+            print(image.requires_grad)
+            mask = self.cam_model(input_tensor=image)
+            return mask
 
     def on_test_epoch_end(self):
         self.ADs, self.ICs = self.metric_AD_IC.get_results()
         if self.eval_length == "long":
             self.ROADs = self.metric_ROAD.get_results()
-            self.log_dict(
-                {
-                    "AD 100%": torch.tensor(self.ADs[0]),
-                    "IC 100%": torch.tensor(self.ICs[0]),
-                    "AD 50%": torch.tensor(self.ADs[1]),
-                    "IC 50%": torch.tensor(self.ICs[1]),
-                    "AD 15%": torch.tensor(self.ADs[2]),
-                    "IC 15%": torch.tensor(self.ICs[2]),
-                    "ROAD 10%": torch.tensor(self.ROADs[0]),
-                    "ROAD 20%": torch.tensor(self.ROADs[1]),
-                    "ROAD 30%": torch.tensor(self.ROADs[2]),
-                    "ROAD 40%": torch.tensor(self.ROADs[3]),
-                    "ROAD 50%": torch.tensor(self.ROADs[4]),
-                    "ROAD 70%": torch.tensor(self.ROADs[5]),
-                    "ROAD 90%": torch.tensor(self.ROADs[6]),
-                }
-            )
+            if type(self.logger) is WandbLogger:
+                columns_adic = [
+                    "AD 100%",
+                    "IC 100%",
+                    "AD 50%",
+                    "IC 50%",
+                    "AD 15%",
+                    "IC 15%",
+                ]
+                columns_road = ["area"]
+                data = [
+                    [
+                        self.ADs[0],
+                        self.ICs[0],
+                        self.ADs[1],
+                        self.ICs[1],
+                        self.ADs[2],
+                        self.ICs[2],
+                    ]
+                ]
+                data_road = [[self.ROADs]]
+                self.logger.log_table(key="ADIC", columns=columns_adic, data=data)
+                self.logger.log_table(key="ROAD", columns=columns_road, data=data_road)
+            else:
+                self.log_dict(
+                    {
+                        "AD 100%": torch.tensor(self.ADs[0]),
+                        "IC 100%": torch.tensor(self.ICs[0]),
+                        "AD 50%": torch.tensor(self.ADs[1]),
+                        "IC 50%": torch.tensor(self.ICs[1]),
+                        "AD 15%": torch.tensor(self.ADs[2]),
+                        "IC 15%": torch.tensor(self.ICs[2]),
+                        "ROAD": torch.tensor(self.ROAD),
+                    }
+                )
         else:
-            self.log_dict(
-                {
-                    "AD 100%": torch.tensor(self.ADs[0]),
-                    "IC 100%": torch.tensor(self.ICs[0]),
-                    "AD 50%": torch.tensor(self.ADs[1]),
-                    "IC 50%": torch.tensor(self.ICs[1]),
-                    "AD 15%": torch.tensor(self.ADs[2]),
-                    "IC 15%": torch.tensor(self.ICs[2]),
-                }
-            )
+            if type(self.logger) is WandbLogger:
+                columns_adic = [
+                    "AD 100%",
+                    "IC 100%",
+                    "AD 50%",
+                    "IC 50%",
+                    "AD 15%",
+                    "IC 15%",
+                ]
+                data = [
+                    [
+                        self.ADs[0],
+                        self.ICs[0],
+                        self.ADs[1],
+                        self.ICs[1],
+                        self.ADs[2],
+                        self.ICs[2],
+                    ]
+                ]
+                self.logger.log_table(key="ADIC", columns=columns_adic, data=data)
+            else:
+                self.log_dict(
+                    {
+                        "AD 100%": torch.tensor(self.ADs[0]),
+                        "IC 100%": torch.tensor(self.ICs[0]),
+                        "AD 50%": torch.tensor(self.ADs[1]),
+                        "IC 50%": torch.tensor(self.ICs[1]),
+                        "AD 15%": torch.tensor(self.ADs[2]),
+                        "IC 15%": torch.tensor(self.ICs[2]),
+                    }
+                )
 
     def on_test_model_eval(self, *args, **kwargs):
         super().on_test_model_eval(*args, **kwargs)
@@ -167,20 +215,19 @@ class COMPAREVIT(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         with torch.inference_mode(False):
-            images, labels = batch
+            images, _ = batch
             images = images.clone()
-            labels = labels.clone()
 
             # this is the test loop
             logits = self.raw_model(images)
-            if self.once:
+            if self.count_fp:
                 print(self.raw_model.fp_count)
             logits = logits.softmax(dim=1)
             chosen_logits, model_truth = logits.max(dim=1)
             masks = self.cam_model(input_tensor=images)
-            if self.once:
+            if self.count_fp:
                 print(self.raw_model.fp_count)
-                self.once = False
+                self.count_fp = False
             if numpy.isnan(masks).any():
                 print("NaNs in masks")
                 quit()
@@ -188,13 +235,13 @@ class COMPAREVIT(pl.LightningModule):
             masks = metrics.normalizeMinMax(masks)
 
             self.metric_AD_IC(images, chosen_logits, model_truth, masks)
-            masks = torch.nn.functional.interpolate(
-                masks,
-                size=(self.img_size, self.img_size),
-                mode="bilinear",
-                align_corners=False,
-            )
             if self.eval_length == "long":
+                masks = torch.nn.functional.interpolate(
+                    masks,
+                    size=(self.img_size, self.img_size),
+                    mode="bilinear",
+                    align_corners=False,
+                )
                 masks = masks.squeeze().cpu().detach().numpy()
                 self.metric_ROAD(images, model_truth, masks)
 
@@ -230,7 +277,7 @@ class HILAVIT(pl.LightningModule):
         self.img_size = img_size
         self.eval_length = eval_length
         self.metric_AD_IC = metrics.AD_IC(
-            self.model, img_size, percent_list=percent_list, train_method="new"
+            self.model, img_size, percent_list=percent_list, normalized_data=True
         )
         self.metric_ROAD = metrics.ROAD(self.model, ROADMostRelevantFirst)
         self.once = True
@@ -258,13 +305,7 @@ class HILAVIT(pl.LightningModule):
                     "IC 50%": torch.tensor(self.ICs[1]),
                     "AD 15%": torch.tensor(self.ADs[2]),
                     "IC 15%": torch.tensor(self.ICs[2]),
-                    "ROAD 10%": torch.tensor(self.ROADs[0]),
-                    "ROAD 20%": torch.tensor(self.ROADs[1]),
-                    "ROAD 30%": torch.tensor(self.ROADs[2]),
-                    "ROAD 40%": torch.tensor(self.ROADs[3]),
-                    "ROAD 50%": torch.tensor(self.ROADs[4]),
-                    "ROAD 70%": torch.tensor(self.ROADs[5]),
-                    "ROAD 90%": torch.tensor(self.ROADs[6]),
+                    "ROAD": torch.tensor(self.ROAD),
                 }
             )
         else:

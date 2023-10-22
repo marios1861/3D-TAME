@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass, field
-from typing import List, Tuple, Type, Union
+from typing import List, Literal, Optional, Tuple, Type, Union
 
 import cv2
 import numpy as np
@@ -17,11 +17,11 @@ from .avg_meter import AverageMeter
 @dataclass
 class AD_IC:
     model: torch.nn.Module
-    img_size: int
-    train_method: str = "legacy"
+    img_size: Union[int, List[int]] = 224
+    normalized_data: bool = False
     percent_list: List[float] = field(default_factory=lambda: [0.0, 0.5, 0.85])
-    noisy_masks: bool = False
-    legacy_mode: bool = False
+    stats: Optional[Tuple[np.ndarray, np.ndarray]] = None
+    masking: Literal["random", "diagonal", "max"] = "diagonal"
 
     def __post_init__(self):
         self.chosen_logits_list = []
@@ -40,9 +40,9 @@ class AD_IC:
             masks,
             self.img_size,
             self.percent_list,
-            self.noisy_masks,
-            self.train_method,
-            self.legacy_mode,
+            self.masking,
+            self.normalized_data,
+            self.stats,
         )
         new_logits_list = [
             new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
@@ -90,15 +90,14 @@ class ROAD:
         Type[ROADLeastRelevantFirst],
     ]
     percent_list: List[int] = field(
-        default_factory=lambda: [100 - pct for pct in [10, 20, 30, 40, 50, 70, 90]]
+        default_factory=lambda: [100 - pct for pct in [90, 50, 10]]
     )
 
     def __post_init__(self):
         self.target = None
-        self.metric: List[AverageMeter] = []
+        self.metric = AverageMeter(type="avg")
         self.roads: List[Union[ROADMostRelevantFirst, ROADLeastRelevantFirst]] = []
         for percentile in self.percent_list:
-            self.metric.append(AverageMeter(type="avg"))
             self.roads.append(self.road(percentile))
 
     @torch.no_grad()
@@ -110,18 +109,22 @@ class ROAD:
     ):
         if self.target is None:
             self.target = [RawScoresOutputTarget() for _ in range(input.size(0))]
+        scores = []
         for i in range(len(self.percent_list)):
-            scores = self.roads[i](
-                input, masks, self.target, self.model, return_diff=False  # type: ignore
+            logits = torch.tensor(self.roads[i](
+                input, masks, self.target, self.model  # type: ignore
+            ))
+            scores.append(
+                logits[torch.arange(logits.size(0)), model_truth.to(logits.device)].mean()
             )
-            self._updateAcc(model_truth.cpu(), torch.tensor(scores), i)
+        self._updateAcc(torch.tensor(scores))
 
-    def _updateAcc(self, preds: torch.Tensor, scores: torch.Tensor, i: int):
-        _, new_preds = scores.max(dim=1)
-        self.metric[i].update(((preds == new_preds).sum() / preds.shape[0]).item())
+    def _updateAcc(self, scores: torch.Tensor):
+        area = torch.trapezoid(scores, torch.tensor(self.percent_list))
+        self.metric.update(area.item())
 
-    def get_results(self) -> List[float]:
-        return [metric() for metric in self.metric]
+    def get_results(self) -> float:
+        return self.metric()
 
 
 def drop_Npercent(cam_map, percent):
@@ -205,65 +208,127 @@ def normalizeMinMax(cam_maps: torch.Tensor) -> torch.Tensor:
     # to apply min 3 times to the last dimension
     cam_map_mins = cam_maps
     cam_map_maxs = cam_maps
-    for _ in range(0, 3):
-        cam_map_mins, _ = cam_map_mins.min(dim=-1)
-        cam_map_maxs, _ = cam_map_maxs.max(dim=-1)
-    # now both of these tensors are 1-dimensional holding the min and the max
-    # of each batch
-    cam_maps -= cam_map_mins.view(-1, 1, 1, 1)
-    cam_maps /= (cam_map_maxs - cam_map_mins).view(-1, 1, 1, 1)
+    if cam_maps.ndim == 4:
+        for _ in range(0, 3):
+            cam_map_mins, _ = cam_map_mins.min(dim=-1)
+            cam_map_maxs, _ = cam_map_maxs.max(dim=-1)
+        # now both of these tensors are 1-dimensional holding the min and the max
+        # of each batch
+        cam_maps -= cam_map_mins.view(-1, 1, 1, 1)
+        cam_maps /= (cam_map_maxs - cam_map_mins + 1e-10).view(-1, 1, 1, 1)
+    else:
+        for _ in range(0, 4):
+            cam_map_mins, _ = cam_map_mins.min(dim=-1)
+            cam_map_maxs, _ = cam_map_maxs.max(dim=-1)
+        # now both of these tensors are 1-dimensional holding the min and the max
+        # of each batch
+        cam_maps -= cam_map_mins.view(-1, 1, 1, 1, 1)
+        cam_maps /= (cam_map_maxs - cam_map_mins).view(-1, 1, 1, 1, 1)
     return cam_maps
 
 
 def get_masked_inputs(
     inp: torch.Tensor,
     masks: torch.Tensor,
-    img_size: int,
+    img_size: Union[int, List[int]],
     percent: List[float],
-    noisy_masks: bool = True,
-    train_method: str = "old",
-    legacy_mode: bool = False,
+    masking: Literal["random", "diagonal", "max"] = "random",
+    normalized_data: bool = True,
+    stats: Optional[Tuple[np.ndarray, np.ndarray]] = None,
 ) -> List[torch.Tensor]:
-    B, C, _, _ = masks.size()
-    if noisy_masks:
-        assert C == B
-        masks = masks.diagonal().permute(2, 0, 1).unsqueeze(1)
-    _, C, _, _ = masks.size()
-    assert C == 1
 
-    masks = F.interpolate(
-        masks, size=(img_size, img_size), mode="bilinear", align_corners=False
-    )
-    _, _, H, W = masks.size()
-    masks = masks.float()
+    if masks.ndim == 4:
+        B, C, _, _ = masks.size()
+        if masking == "random":
+            assert C == B
+            masks = masks.diagonal().permute(2, 0, 1).unsqueeze(1)
+        _, C, _, _ = masks.size()
+        assert C == 1
 
-    def percent_gen(pc: float) -> torch.Tensor:
-        return (
-            masks.flatten(start_dim=1, end_dim=3)
-            .quantile(pc, dim=1)
-            .expand(H, W, C, B)
-            .permute(*range(masks.ndim - 1, -1, -1))
+        masks = F.interpolate(
+            masks, size=(img_size, img_size), mode="bilinear", align_corners=False
         )
+        _, _, H, W = masks.size()
+        masks = masks.float()
 
-    masks_ls = [masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent]
-    if train_method == "old" or train_method == "new":
-        invTrans = transforms.Compose(
-            [
-                transforms.Normalize(
-                    mean=[0.0, 0.0, 0.0], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
-                ),
-                transforms.Normalize(
-                    mean=[-0.485, -0.456, -0.406], std=[1.0, 1.0, 1.0]
-                ),
+        def percent_gen(pc: float) -> torch.Tensor:
+            return (
+                masks.flatten(start_dim=1, end_dim=3)
+                .quantile(pc, dim=1)
+                .expand(H, W, C, B)
+                .permute(*range(masks.ndim - 1, -1, -1))
+            )
+
+        masks_ls = [masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent]
+        if normalized_data:
+            invTrans = transforms.Compose(
+                [
+                    transforms.Normalize(
+                        mean=[0.0, 0.0, 0.0], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]
+                    ),
+                    transforms.Normalize(
+                        mean=[-0.485, -0.456, -0.406], std=[1.0, 1.0, 1.0]
+                    ),
+                ]
+            )
+            normalize = transforms.Normalize(
+                (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
+            )
+            x_masked_ls = [normalize(mask * invTrans(inp)) for mask in masks_ls]
+        else:
+            x_masked_ls = [mask * inp for mask in masks_ls]
+        return x_masked_ls
+    elif masks.ndim == 5:
+        B, C, _, _, _ = masks.size()
+        if masking == "random":
+            assert C == B
+            masks = masks[torch.arange(B), torch.arange(B), :, :, :]
+        _, C, _, _, _ = masks.size()
+        assert C == 1
+
+        masks = F.interpolate(
+            masks, size=img_size, mode="trilinear", align_corners=False
+        )
+        assert isinstance(masks, torch.Tensor)
+        _, _, D, H, W = masks.size()
+        masks = masks.float()
+
+        def percent_gen(pc: float) -> torch.Tensor:
+            return (
+                masks.flatten(start_dim=1, end_dim=4)
+                .quantile(pc, dim=1)
+                .expand(W, H, D, C, B)
+                .permute(*range(masks.ndim - 1, -1, -1))
+            )
+
+        masks_ls = [masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent]
+        if stats is not None:
+            inp_mean, inp_std = stats
+            inp_mean = torch.tensor(inp_mean, dtype=inp.dtype).to(inp.device)
+            inp_std = torch.tensor(inp_std, dtype=inp.dtype).to(inp.device)
+            raw_inp = inp * inp_std + inp_mean
+            masked_inp = [
+                ((masks * raw_inp) - inp_mean) / (inp_std + 1e-10) for masks in masks_ls
             ]
-        )
-        normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-        x_masked_ls = [normalize(mask * invTrans(inp)) for mask in masks_ls]
-    elif train_method == "legacy" or legacy_mode:
-        x_masked_ls = [mask * inp for mask in masks_ls]
+            return masked_inp
+        else:
+            masked_inp = [masks * inp for masks in masks_ls]
+            masked_mean = [masked.view(B, -1).mean(1) for masked in masked_inp]
+            masked_std = [masked.view(B, -1).mean(1) for masked in masked_inp]
+            inp_mean = inp.view(B, -1).mean(1)
+            inp_std = inp.view(B, -1).std(1)
+            normalized_masked = [
+                (masked - mean.view(-1, 1, 1, 1, 1))
+                / (std.view(-1, 1, 1, 1, 1) + 1e-10)
+                for masked, mean, std in zip(masked_inp, masked_mean, masked_std)
+            ]
+            renormalized_masked = [
+                (masked * inp_std.view(-1, 1, 1, 1, 1) + inp_mean.view(-1, 1, 1, 1, 1))
+                for masked in normalized_masked
+            ]
+            return renormalized_masked
     else:
         raise NotImplementedError
-    return x_masked_ls
 
 
 def normalize(tensor):
