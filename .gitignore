@@ -21,3 +21,4 @@ hparams.yaml
 old models/
 *logs/
 _torchshow/
+cnn-interpretability/data/
