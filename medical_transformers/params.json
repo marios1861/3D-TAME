@@ -1,6 +1,6 @@
 {
 "dataset_params" : {"dataset": "APTOS2019",
-                    "data_location" : "/storage/matsou/medical_data",
+                    "data_location" : "/home/marios/Documents/aptos2019-blindness-detection",
                     "train_transforms" : {"Resize" : {"apply" : true,
                                                       "height" : 256,
                                                       "width" : 256},
@@ -175,7 +175,7 @@
                     "restore_only_model": false,
                     "use_tensorboard" : false,
                     "use_mixed_precision" : false,
-                    "save_dir" : "/storage/matsou/models_and_misc/CVAMD2021"
+                    "save_dir" : "/home/marios/Documents/3D-TAME/medical_transformers/models_and_misc/CVAMD2021"
                   },
     
 "system_params" : {"use_all_GPUs" : false,

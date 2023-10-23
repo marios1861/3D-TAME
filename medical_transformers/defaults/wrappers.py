@@ -6,11 +6,6 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler as DS
 
-try:
-    from torchlars import LARS
-except:
-    install("torchlars")
-    from torchlars import LARS
 
 class DefaultWrapper:
     """Class that wraps everything.
@@ -207,12 +202,7 @@ class DefaultWrapper:
         # handling LARS
         lars_params = optimization_params.LARS_params
         effective_batch_size = optimization_params.effective_batch_size
-        if lars_params.use and effective_batch_size >= lars_params.batch_act_thresh:
-            print_ddp("LARS OPTIMIZER: \033[92m ACTIVE \033[0m")
-            optimizer = LARS(optimizer=optimizer, eps=lars_params.eps, trust_coef=lars_params.trust_coef)
-            optimizer.defaults = optimizer.optim.defaults             
-        else:
-            print_ddp("LARS OPTIMIZER: \033[93m INACTIVE \033[0m")
+        print_ddp("LARS OPTIMIZER: \033[93m INACTIVE \033[0m")
             
         return edict({"optimizer":optimizer, "optimizer_type":optimizer_type})
     
