@@ -24,6 +24,8 @@ class TAMELIT(pl.LightningModule):
         self,
         model_name: str,
         layers: List[str],
+        model: Optional[torch.nn.Module] = None,
+        input_dim: Optional[torch.Size] = None,
         attention_version: str = "TAME",
         noisy_masks: str = "random",
         train_method: str = "new",
@@ -42,7 +44,7 @@ class TAMELIT(pl.LightningModule):
         super().__init__()
         if optimizer == "OLDSGD":
             schedule = "OLDCLASSIC"
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=['model'])
         self.cfg = ut.pl_get_config(
             model_name,
             layers,
@@ -56,7 +58,10 @@ class TAMELIT(pl.LightningModule):
             lr,
             epochs,
         )
-        self.generic = ut.get_model(self.cfg)
+        if model is None:
+            self.generic = ut.get_model(self.cfg)
+        else:
+            self.generic = ut.get_new_model(self.cfg, model, input_dim)
         self.attention_version = attention_version
         # threshold is 0 because we use un-normalized logits to save on computation time
         self.train_accuracy = torchmetrics.Accuracy(

@@ -25,8 +25,7 @@ from tabulate import tabulate
 
 
 # Binary brain mask used to cut out the skull.
-mask = utils.load_nifti('data/binary_brain_mask.nii.gz')
-
+mask = utils.load_nifti('data/mni_icbm152_t1_tal_nlin_sym_09a_mask.nii')
 
 # ------------------------- ADNI data tables -----------------------------------
 
@@ -68,7 +67,7 @@ def load_data_table(table, image_dir, corrupt_images=None):
     # Filter out images where files are missing.
     len_before = len(df)
     #print(df[~np.array(map(os.path.exists, df['filepath']))]['filepath'].values)
-    df = df[map(os.path.exists, df['filepath'])]
+    df = df[df['filepath'].apply(os.path.exists)]
     print('Filtered out', len_before - len(df), 'of', len_before, 'images because of missing files')
     
     # Filter out images with MCI.
@@ -157,7 +156,7 @@ class ADNIDataset(Dataset):
 
     def image_shape(self):
         """The shape of the MRI images."""
-        return utils.load_nifti(self.filenames[0], mask=mask).shape
+        return utils.load_nifti(self.filenames[0], mask=self.mask).shape
 
     def fit_normalization(self, num_sample=None, show_progress=False):
         """

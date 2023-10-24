@@ -286,7 +286,7 @@ def area_occlusion(model, image_tensor, area_masks, target_class=None, occlusion
         image_tensor = image_tensor.cuda()
     output = model(Variable(image_tensor[None], requires_grad=False))
     if apply_softmax:
-        output = F.softmax(output)
+        output = F.softmax(output, dim=1)
    
     output_class = output.max(1)[1].data.cpu().numpy()[0]
     if verbose: print('Image was classified as', output_class, 'with probability', output.max(1)[0].data[0])
@@ -307,10 +307,10 @@ def area_occlusion(model, image_tensor, area_masks, target_class=None, occlusion
         
         output = model(Variable(image_tensor_occluded[None], requires_grad=False))
         if apply_softmax:
-            output = F.softmax(output)
+            output = F.softmax(output, dim=1)
             
         occluded_prob = output.data[0, target_class]
-        relevance_map[area_mask.view(image_tensor.shape) == 1] = (unoccluded_prob - occluded_prob)
+        relevance_map[area_mask.view(image_tensor.shape).squeeze() == 1] = (unoccluded_prob - occluded_prob)
 
     relevance_map = relevance_map.cpu().numpy()
     relevance_map = np.maximum(relevance_map, 0)

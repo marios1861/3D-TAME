@@ -61,8 +61,7 @@ def plot_learning_curve(history):
 def load_nifti(file_path, mask=None, z_factor=None, remove_nan=True):
     """Load a 3D array from a NIFTI file."""
     img = nib.load(file_path)
-    struct_arr = np.array(img.get_data())
-    
+    struct_arr = np.array(img.get_fdata())
     if remove_nan:
         struct_arr = np.nan_to_num(struct_arr)
     if mask is not None:

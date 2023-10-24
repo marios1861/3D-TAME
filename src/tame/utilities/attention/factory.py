@@ -9,7 +9,7 @@ from tame.utilities.attention.old_attention import (
     AttentionV3d2dd1,
     AttentionV5d1,
 )
-from tame.utilities.attention.tame import AttentionTAME
+from tame.utilities.attention.tame import AttentionTAME, Attention3DTAME
 from tame.utilities.attention.tattentionv1 import (
     TAttentionV1,
     TAttentionV1_1,
@@ -26,6 +26,7 @@ from tame.utilities.attention.tattentionv3 import TAttentionV3
 class AMBuilder(object):
     r"""The attention mechanism component of Generic"""
     versions: ClassVar[Dict[str, Type[AttentionMech]]] = {
+        "3D-TAME": Attention3DTAME,
         "TAME": AttentionTAME,
         "Noskipconnection": AttentionV3d2dd1,
         "NoskipNobatchnorm": AttentionV3d2,

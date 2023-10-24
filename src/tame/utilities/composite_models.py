@@ -24,6 +24,7 @@ class Generic(nn.Module):
         attn_version: str,
         noisy_masks: str = "random",
         train_method: str = "new",
+        input_dim: Optional[torch.Size] = None,
     ):
         """Args:
         mdl (nn.Module): the model which we would like to use for interpretability
@@ -33,6 +34,8 @@ class Generic(nn.Module):
         super(Generic, self).__init__()
         # get model feature extractor
         train_names, eval_names = get_graph_node_names(mdl)
+        if feature_layers == []:
+            print(train_names)
 
         output = (train_names[-1], eval_names[-1])
         if output[0] != output[1]:
@@ -45,7 +48,10 @@ class Generic(nn.Module):
         )
 
         # Dry run to get number of channels for the attention mechanism
-        inp = torch.randn(2, 3, 224, 224)
+        if input_dim:
+            inp = torch.randn(input_dim)
+        else:
+            inp = torch.randn(2, 3, 224, 224)
         self.body.eval()
         with torch.no_grad():
             out = self.body(inp)
@@ -182,25 +188,52 @@ class Arrangement(nn.Module):
 
     @staticmethod
     def smoothness_loss(masks, power=2, border_penalty=0.3):
-        B, _, _, _ = masks.size()
-        x_loss = torch.sum(
-            (torch.abs(masks[:, :, 1:, :] - masks[:, :, :-1, :])) ** power
-        )
-        y_loss = torch.sum(
-            (torch.abs(masks[:, :, :, 1:] - masks[:, :, :, :-1])) ** power
-        )
-        if border_penalty > 0:
-            border = float(border_penalty) * torch.sum(
-                masks[:, :, -1, :] ** power
-                + masks[:, :, 0, :] ** power
-                + masks[:, :, :, -1] ** power
-                + masks[:, :, :, 0] ** power
+        if masks.dim() == 4:
+            B, _, _, _ = masks.size()
+            x_loss = torch.sum(
+                (torch.abs(masks[:, :, 1:, :] - masks[:, :, :-1, :])) ** power
             )
+            y_loss = torch.sum(
+                (torch.abs(masks[:, :, :, 1:] - masks[:, :, :, :-1])) ** power
+            )
+            if border_penalty > 0:
+                border = float(border_penalty) * torch.sum(
+                    masks[:, :, -1, :] ** power
+                    + masks[:, :, 0, :] ** power
+                    + masks[:, :, :, -1] ** power
+                    + masks[:, :, :, 0] ** power
+                )
+            else:
+                border = 0.0
+            return (x_loss + y_loss + border) / float(
+                power * B
+            )  # watch out, normalised by the batch size!
         else:
-            border = 0.0
-        return (x_loss + y_loss + border) / float(
-            power * B
-        )  # watch out, normalised by the batch size!
+            B, _, _, _, _ = masks.size()
+            x_loss = torch.sum(
+                (torch.abs(masks[:, :, :, 1:, :] - masks[:, :, :, :-1, :])) ** power
+            )
+            y_loss = torch.sum(
+                (torch.abs(masks[:, :, :, :, 1:] - masks[:, :, :, :, :-1])) ** power
+            )
+            z_loss = torch.sum(
+                (torch.abs(masks[:, :, 1:, :, :] - masks[:, :, :-1, :, :])) ** power
+            )
+
+            if border_penalty > 0:
+                border = float(border_penalty) * torch.sum(
+                    (masks[:, :, :, -1, :] ** power).sum()
+                    + (masks[:, :, :, 0, :] ** power).sum()
+                    + (masks[:, :, :, :, -1] ** power).sum()
+                    + (masks[:, :, :, :, 0] ** power).sum()
+                    + (masks[:, :, -1, :, :] ** power).sum()
+                    + (masks[:, :, 0, :, :] ** power).sum()
+                )
+            else:
+                border = 0.0
+            return (x_loss + y_loss + z_loss + border) / float(
+                power * B
+            )  # watch out, normalised by the batch size!
 
     def classic_loss(
         self, logits: torch.Tensor, labels: torch.Tensor, masks: torch.Tensor
@@ -242,10 +275,16 @@ class Arrangement(nn.Module):
         self, masks: torch.Tensor, labels: torch.Tensor, inp: torch.Tensor
     ) -> torch.Tensor:
         batches = masks.size(0)
-        masks = masks[torch.arange(batches), labels, :, :].unsqueeze(1)
-        masks = F.interpolate(
-            masks, size=(224, 224), mode="bilinear", align_corners=False
-        )
+        if masks.dim() == 4:
+            masks = masks[torch.arange(batches), labels, :, :].unsqueeze(1)
+            masks = F.interpolate(
+                masks, size=(224, 224), mode="bilinear", align_corners=False
+            )
+        else:
+            masks = masks[torch.arange(batches), labels, :, :, :].unsqueeze(1)
+            masks = F.interpolate(
+                masks, size=inp.shape[-3:], mode="trilinear", align_corners=False
+            )
         x_norm = masks * inp
         return self.body(x_norm)[self.output_name]
 

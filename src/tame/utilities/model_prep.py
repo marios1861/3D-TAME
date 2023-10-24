@@ -8,6 +8,20 @@ from .composite_models import Generic
 from .sam import SAM
 
 
+def get_new_model(cfg: Dict[str, Any], mdl, input_dim) -> Generic:
+    mdl = Generic(
+        cfg["model"],
+        mdl,
+        cfg["layers"],
+        cfg["version"],
+        cfg["noisy_masks"],
+        cfg["train_method"],
+        input_dim=input_dim,
+    )
+    mdl.cuda()
+    return mdl
+
+
 def get_model(cfg: Dict[str, Any]) -> Generic:
     mdl = model_prep(cfg["model"])
     mdl = Generic(
