@@ -1,8 +1,9 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional, Tuple, Union
 import cv2
 
 import lightning.pytorch as pl
+from lightning.pytorch.loggers import WandbLogger
 import numpy as np
 import torch
 import torchmetrics
@@ -24,44 +25,53 @@ class TAMELIT(pl.LightningModule):
         self,
         model_name: str,
         layers: List[str],
+        epochs: int,
         model: Optional[torch.nn.Module] = None,
         input_dim: Optional[torch.Size] = None,
+        stats: Optional[Tuple[np.ndarray, np.ndarray]] = None,
         attention_version: str = "TAME",
-        noisy_masks: str = "random",
-        train_method: str = "new",
-        optimizer: str = "SGD",
+        masking: Literal["random", "diagonal", "max"] = "random",
+        net_type: Literal["cnn", "transformer"] = "cnn",
+        normalized_data=True,
+        train_method: Literal[
+            "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
+        ] = "new",
+        optimizer_type: Literal["Adam", "AdamW", "RMSProp", "SGD", "OLDSGD"] = "SGD",
         use_sam: bool = False,
         momentum: float = 0.9,
-        decay: float = 5.0e-4,
-        schedule: str = "NEW",
+        weight_decay: float = 5.0e-4,
+        schedule_type: Literal["equal", "new_classic", "old_classic"] = "equal",
         lr: float = 1.0e-3,
-        epochs: int = 8,
-        img_size: int = 224,
+        img_size: Union[int, List[int]] = 224,
         percent_list: List[float] = [0.0, 0.5, 0.85],
         num_classes: int = 1000,
-        eval_length: str = "long",
+        eval_length: Literal["long", "short"] = "long",
     ):
         super().__init__()
-        if optimizer == "OLDSGD":
-            schedule = "OLDCLASSIC"
-        self.save_hyperparameters(ignore=['model'])
-        self.cfg = ut.pl_get_config(
-            model_name,
-            layers,
-            attention_version,
-            noisy_masks,
-            train_method,
-            optimizer,
-            momentum,
-            decay,
-            schedule,
-            lr,
-            epochs,
-        )
+        if optimizer_type == "OLDSGD":
+            schedule_type = "old_classic"
+            assert normalized_data and train_method != "raw_normalize"
+        self.save_hyperparameters(ignore=["model", "stats"])
         if model is None:
-            self.generic = ut.get_model(self.cfg)
+            self.generic = ut.get_model(
+                model_name=model_name,
+                layers=layers,
+                version=attention_version,
+                masking=masking,
+                train_method=train_method,
+            )
         else:
-            self.generic = ut.get_new_model(self.cfg, model, input_dim)
+            assert input_dim is not None
+            self.generic = ut.get_new_model(
+                model,
+                input_dim,
+                model_name=model_name,
+                layers=layers,
+                version=attention_version,
+                masking=masking,
+                train_method=train_method,
+            )
+            img_size = list(input_dim[-3:])
         self.attention_version = attention_version
         # threshold is 0 because we use un-normalized logits to save on computation time
         self.train_accuracy = torchmetrics.Accuracy(
@@ -71,14 +81,30 @@ class TAMELIT(pl.LightningModule):
             task="multiclass", num_classes=num_classes, threshold=0
         )
         self.img_size = img_size
-        self.eval_length = eval_length
+        self.eval_length: Literal["long", "short"] = eval_length
         self.metric_AD_IC = metrics.AD_IC(
-            self.generic, img_size, percent_list=percent_list, train_method=train_method
+            self.generic,
+            img_size,
+            net_type=net_type,
+            percent_list=percent_list,
+            stats=stats,
         )
-        self.metric_ROAD = metrics.ROAD(self.generic, ROADMostRelevantFirst)
+        self.metric_ROAD = metrics.ROAD(
+            self.generic, ROADMostRelevantFirst, stats=stats
+        )
         self.generic.requires_grad_(False)
         self.generic.attn_mech.requires_grad_()
         self.use_sam = use_sam
+        self.momentum = momentum
+        self.weight_decay = weight_decay
+        self.optimizer_type: Literal[
+            "Adam", "AdamW", "RMSProp", "SGD", "OLDSGD"
+        ] = optimizer_type
+        self.schedule_type: Literal[
+            "equal", "new_classic", "old_classic"
+        ] = schedule_type
+        self.lr = lr
+        self.epochs = epochs
         if use_sam:
             self.automatic_optimization = False
 
@@ -147,32 +173,70 @@ class TAMELIT(pl.LightningModule):
         )
 
     def on_test_epoch_start(self):
-        self.noisy_masks_state = self.generic.noisy_masks
-        self.generic.noisy_masks = "diagonal"
+        self.masking_state: Literal["random", "max", "diagonal"] = self.generic.masking
+        self.generic.masking = "diagonal"
 
     def on_test_epoch_end(self):
         self.ADs, self.ICs = self.metric_AD_IC.get_results()
-        self.generic.noisy_masks = self.noisy_masks_state
+        self.generic.masking = self.masking_state
         if self.eval_length == "long":
-            self.ROADs = self.metric_ROAD.get_results()
-            self.log_dict(
-                {
-                    "AD 100%": torch.tensor(self.ADs[0]),
-                    "IC 100%": torch.tensor(self.ICs[0]),
-                    "AD 50%": torch.tensor(self.ADs[1]),
-                    "IC 50%": torch.tensor(self.ICs[1]),
-                    "AD 15%": torch.tensor(self.ADs[2]),
-                    "IC 15%": torch.tensor(self.ICs[2]),
-                    "ROAD 10%": torch.tensor(self.ROADs[0]),
-                    "ROAD 20%": torch.tensor(self.ROADs[1]),
-                    "ROAD 30%": torch.tensor(self.ROADs[2]),
-                    "ROAD 40%": torch.tensor(self.ROADs[3]),
-                    "ROAD 50%": torch.tensor(self.ROADs[4]),
-                    "ROAD 70%": torch.tensor(self.ROADs[5]),
-                    "ROAD 90%": torch.tensor(self.ROADs[6]),
-                }
-            )
+            self.ROAD = self.metric_ROAD.get_results()
+            if type(self.logger) is WandbLogger:
+                columns_adic = [
+                    "AD 100%",
+                    "IC 100%",
+                    "AD 50%",
+                    "IC 50%",
+                    "AD 15%",
+                    "IC 15%",
+                ]
+                columns_road = ["area"]
+                data = [
+                    [
+                        self.ADs[0],
+                        self.ICs[0],
+                        self.ADs[1],
+                        self.ICs[1],
+                        self.ADs[2],
+                        self.ICs[2],
+                    ]
+                ]
+                data_road = [[self.ROAD]]
+                self.logger.log_table(key="ADIC", columns=columns_adic, data=data)
+                self.logger.log_table(key="ROAD", columns=columns_road, data=data_road)
+            else:
+                self.log_dict(
+                    {
+                        "AD 100%": torch.tensor(self.ADs[0]),
+                        "IC 100%": torch.tensor(self.ICs[0]),
+                        "AD 50%": torch.tensor(self.ADs[1]),
+                        "IC 50%": torch.tensor(self.ICs[1]),
+                        "AD 15%": torch.tensor(self.ADs[2]),
+                        "IC 15%": torch.tensor(self.ICs[2]),
+                        "ROAD": torch.tensor(self.ROAD),
+                    }
+                )
         else:
+            if type(self.logger) is WandbLogger:
+                columns_adic = [
+                    "AD 100%",
+                    "IC 100%",
+                    "AD 50%",
+                    "IC 50%",
+                    "AD 15%",
+                    "IC 15%",
+                ]
+                data = [
+                    [
+                        self.ADs[0],
+                        self.ICs[0],
+                        self.ADs[1],
+                        self.ICs[1],
+                        self.ADs[2],
+                        self.ICs[2],
+                    ]
+                ]
+                self.logger.log_table(key="ADIC", columns=columns_adic, data=data)
             self.log_dict(
                 {
                     "AD 100%": torch.tensor(self.ADs[0]),
@@ -186,7 +250,7 @@ class TAMELIT(pl.LightningModule):
 
     @torch.no_grad()
     def save_masked_image(self, image, id, model_name):
-        self.generic.noisy_masks = "diagonal"
+        self.generic.masking = "diagonal"
         self.generic.eval()
         image = image.unsqueeze(0).to(self.device)
         ts.save(image, f"_torchshow/{model_name}/image{id}.png")
@@ -215,31 +279,47 @@ class TAMELIT(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         # this is the test loop
-        images, labels = batch
+        images, _ = batch
         logits = self.generic(images)
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
         masks = self.generic.get_c(model_truth)
         masks = metrics.normalizeMinMax(masks)
         self.metric_AD_IC(images, chosen_logits, model_truth, masks)
-        masks = torch.nn.functional.interpolate(
-            masks,
-            size=(self.img_size, self.img_size),
-            mode="bilinear",
-            align_corners=False,
-        )
         if self.eval_length == "long":
+            if masks.ndim == 4:
+                masks = torch.nn.functional.interpolate(
+                    masks,
+                    size=(self.img_size, self.img_size),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+            else:
+                masks = torch.nn.functional.interpolate(
+                    masks,
+                    size=self.img_size,
+                    mode="trilinear",
+                    align_corners=False,
+                )
             masks = masks.squeeze().cpu().detach().numpy()
             self.metric_ROAD(images, model_truth, masks)
 
     def configure_optimizers(self):
-        optimizer = ut.get_optim(self.cfg, self.generic, self.use_sam)
+        optimizer = ut.get_optim(
+            self.generic,
+            use_sam=self.use_sam,
+            momentum=self.momentum,
+            weight_decay=self.weight_decay,
+            optimizer_type=self.optimizer_type,
+        )
         # the total steps are divided between num_nodes
         scheduler = ut.get_schedule(
-            self.cfg,
             optimizer,
             self.current_epoch,
             total_steps=int(self.trainer.estimated_stepping_batches),
+            schedule_type=self.schedule_type,
+            lr=self.lr,
+            epochs=self.epochs,
         )
         return [optimizer], [
             {"scheduler": scheduler, "interval": "step", "name": "LR", "frequency": 1}

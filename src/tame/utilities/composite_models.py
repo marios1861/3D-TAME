@@ -1,5 +1,6 @@
 # checked, should be working correctly
 from typing import Dict, List, Optional
+from typing_extensions import Literal
 
 import torch
 import torch.nn as nn
@@ -21,9 +22,11 @@ class Generic(nn.Module):
         name: str,
         mdl: nn.Module,
         feature_layers: List[str],
-        attn_version: str,
-        noisy_masks: str = "random",
-        train_method: str = "new",
+        attention_version: str,
+        masking: Literal["random", "diagonal", "max"] = "random",
+        train_method: Literal[
+            "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
+        ] = "new",
         input_dim: Optional[torch.Size] = None,
     ):
         """Args:
@@ -61,10 +64,14 @@ class Generic(nn.Module):
         ft_size = [o.shape for o in out.values()]
 
         # Build AM
-        self.attn_mech = AMBuilder.create_attention(name, mdl, attn_version, ft_size)
+        self.attn_mech = AMBuilder.create_attention(
+            name, mdl, attention_version, ft_size
+        )
         # Get loss and forward training method
-        self.arr = train_method
-        self.arrangement = Arrangement(self.arr, self.body, self.output)
+        self.train_method: Literal[
+            "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
+        ] = train_method
+        self.arrangement = Arrangement(self.train_method, self.body, self.output)
         self.train_policy, self.get_loss = (
             self.arrangement.train_policy,
             self.arrangement.loss,
@@ -72,12 +79,12 @@ class Generic(nn.Module):
 
         self.a: Optional[torch.Tensor] = None
         self.c: Optional[torch.Tensor] = None
-        self.noisy_masks = noisy_masks
+        self.masking: Literal["random", "diagonal", "max"] = masking
 
     def forward(
         self, x: torch.Tensor, label: Optional[torch.LongTensor] = None
     ) -> torch.Tensor:
-        if self.arr == "legacy":
+        if self.train_method == "raw_normalize":
             x_norm = Generic.normalization(x)
         else:
             x_norm = x
@@ -112,13 +119,13 @@ class Generic(nn.Module):
 
     def get_c(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.c is not None
-        if self.noisy_masks == "random":
+        if self.masking == "random":
             return self.c[:, labels, :, :]
-        elif self.noisy_masks == "diagonal":
+        elif self.masking == "diagonal":
             batches = self.c.size(0)
             return self.c[torch.arange(batches), labels, :, :].unsqueeze(1)
 
-        elif self.noisy_masks == "max":
+        elif self.masking == "max":
             batched_select_max_masks = torch.vmap(
                 Generic.select_max_masks, in_dims=(0, 0, None)
             )
@@ -128,12 +135,12 @@ class Generic(nn.Module):
 
     def get_a(self, labels: torch.Tensor) -> torch.Tensor:
         assert self.a is not None
-        if self.noisy_masks == "random":
+        if self.masking == "random":
             return self.a[:, labels, :, :]
-        elif self.noisy_masks == "diagonal":
+        elif self.masking == "diagonal":
             batches = self.a.size(0)
             return self.a[torch.arange(batches), labels, :, :].unsqueeze(1)
-        elif self.noisy_masks == "max":
+        elif self.masking == "max":
             batched_select_max_masks = torch.vmap(
                 Generic.select_max_masks, in_dims=(0, 0, None)
             )
@@ -145,14 +152,12 @@ class Generic(nn.Module):
 class Arrangement(nn.Module):
     r"""The train_policy and get_loss components of Generic"""
 
-    def __init__(
-        self, version: str, body: nn.Module, output_name: str, noisy_masks=True
-    ):
+    def __init__(self, version: str, body: nn.Module, output_name: str):
         super(Arrangement, self).__init__()
         arrangements = {
             "new": (self.new_train_policy, self.classic_loss),
-            "old": (self.old_train_policy, self.classic_loss),
-            "legacy": (self.legacy_train_policy, self.classic_loss),
+            "renormalize": (self.old_train_policy, self.classic_loss),
+            "raw_normalize": (self.legacy_train_policy, self.classic_loss),
             "layernorm": (self.ln_train_policy, self.classic_loss),
             "batchnorm": (self.bn_train_policy, self.classic_loss),
         }
@@ -166,18 +171,11 @@ class Arrangement(nn.Module):
         self.body = body
         self.output_name = output_name
 
-        if noisy_masks:
-            self.ce_coeff = 1.5  # lambda3
-            self.area_loss_coeff = 2  # lambda2
-            self.smoothness_loss_coeff = 0.01  # lambda1
-            self.area_loss_power = 0.3  # lambda4
-        else:
-            self.ce_coeff = 1.7  # lambda3
-            self.area_loss_coeff = 1.5  # lambda2
-            self.smoothness_loss_coeff = 0.1  # lambda1
-            self.area_loss_power = 0.3  # lambda4
+        self.ce_coeff = 1.7  # lambda3
+        self.area_loss_coeff = 1.5  # lambda2
+        self.smoothness_loss_coeff = 0.1  # lambda1
+        self.area_loss_power = 0.3  # lambda4
 
-        self.extra_masks = None
         self.train_policy, self.loss = arrangements[version]
 
     def area_loss(self, masks):
