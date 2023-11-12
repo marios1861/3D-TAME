@@ -18,7 +18,6 @@ from .avg_meter import AverageMeter
 class AD_IC:
     model: torch.nn.Module
     img_size: Union[int, List[int]] = 224
-    net_type: Literal["cnn", "transformer"] = "cnn"
     normalized_data: bool = False
     percent_list: List[float] = field(default_factory=lambda: [0.0, 0.5, 0.85])
     stats: Optional[Tuple[np.ndarray, np.ndarray]] = None
@@ -42,7 +41,6 @@ class AD_IC:
             self.img_size,
             self.percent_list,
             self.masking,
-            self.net_type,
             self.normalized_data,
             self.stats,
         )
@@ -236,7 +234,6 @@ def get_masked_inputs(
     img_size: Union[int, List[int]],
     percent: List[float],
     masking: Literal["random", "diagonal", "max"] = "random",
-    net_type: Literal["cnn", "transformer"] = "cnn",
     normalized_data: bool = True,
     stats: Optional[Tuple[np.ndarray, np.ndarray]] = None,
 ) -> List[torch.Tensor]:
@@ -263,7 +260,7 @@ def get_masked_inputs(
             )
 
         masks_ls = [masks.masked_fill(masks < percent_gen(pct), 0) for pct in percent]
-        if net_type == "cnn" and normalized_data:
+        if normalized_data:
             invTrans = transforms.Compose(
                 [
                     transforms.Normalize(
@@ -278,10 +275,8 @@ def get_masked_inputs(
                 (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
             )
             x_masked_ls = [normalize(mask * invTrans(inp)) for mask in masks_ls]
-        elif net_type == "transformer" or normalized_data is False:
-            x_masked_ls = [mask * inp for mask in masks_ls]
         else:
-            raise NotImplementedError
+            x_masked_ls = [mask * inp for mask in masks_ls]
         return x_masked_ls
     elif masks.ndim == 5:
         B, C, _, _, _ = masks.size()

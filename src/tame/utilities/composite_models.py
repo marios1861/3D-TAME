@@ -34,7 +34,7 @@ class Generic(nn.Module):
         feature_layers (list): the layers, as printed by get_graph_node_names,
             which we would like to get feature maps from
         """
-        super(Generic, self).__init__()
+        super().__init__()
         # get model feature extractor
         train_names, eval_names = get_graph_node_names(mdl)
         if feature_layers == []:

@@ -31,7 +31,6 @@ class TAMELIT(pl.LightningModule):
         stats: Optional[Tuple[np.ndarray, np.ndarray]] = None,
         attention_version: str = "TAME",
         masking: Literal["random", "diagonal", "max"] = "random",
-        net_type: Literal["cnn", "transformer"] = "cnn",
         normalized_data=True,
         train_method: Literal[
             "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
@@ -85,7 +84,7 @@ class TAMELIT(pl.LightningModule):
         self.metric_AD_IC = metrics.AD_IC(
             self.generic,
             img_size,
-            net_type=net_type,
+            normalized_data=normalized_data,
             percent_list=percent_list,
             stats=stats,
         )
@@ -338,7 +337,7 @@ class LightnightDataset(pl.LightningDataModule):
         crop_size: int = 224,
         datalist_file: Optional[str] = None,
         model: Optional[str] = None,
-        legacy: bool = False,
+        normalize: bool = True,
     ):
         super().__init__()
         self.input_size = input_size
@@ -351,7 +350,7 @@ class LightnightDataset(pl.LightningDataModule):
         self.batch_size = batch_size
         self.datalist_file = datalist_file
         self.model = model
-        self.legacy = legacy
+        self.normalize = normalize
 
     def train_dataloader(self):
         tsfm_train = transforms.Compose(
@@ -363,7 +362,7 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             ]
         )
-        if self.legacy:
+        if not self.normalize:
             tsfm_train = transforms.Compose(
                 [
                     transforms.Resize(self.input_size),
@@ -396,7 +395,7 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             ]
         )
-        if self.legacy:
+        if not self.normalize:
             tsfm_val = transforms.Compose(
                 [
                     transforms.Resize(self.input_size),
@@ -427,7 +426,7 @@ class LightnightDataset(pl.LightningDataModule):
                 transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             ]
         )
-        if self.legacy:
+        if not self.normalize:
             tsfm_val = transforms.Compose(
                 [
                     transforms.Resize(self.input_size),
