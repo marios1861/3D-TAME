@@ -27,7 +27,7 @@ def get_new_model(
         masking = cfg["masking"]
         train_method = cfg["train_method"]
     assert model_name
-    assert layers
+    assert layers or layers == []
     assert version
     assert masking
     mdl = Generic(

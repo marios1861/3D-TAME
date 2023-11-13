@@ -92,7 +92,6 @@ class ROAD:
     percent_list: List[int] = field(
         default_factory=lambda: [100 - pct for pct in [90, 50, 10]]
     )
-    stats: Optional[Tuple[np.ndarray, np.ndarray]] = None
 
     def __post_init__(self):
         self.target = None
@@ -237,6 +236,7 @@ def get_masked_inputs(
     normalized_data: bool = True,
     stats: Optional[Tuple[np.ndarray, np.ndarray]] = None,
 ) -> List[torch.Tensor]:
+
     if masks.ndim == 4:
         B, C, _, _ = masks.size()
         if masking == "random":

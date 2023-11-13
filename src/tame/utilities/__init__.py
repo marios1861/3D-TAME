@@ -5,12 +5,12 @@ from .model_prep import get_model, get_new_model, get_optim, get_schedule, model
 from .restore import load_model, save_model
 from .proj_utilities import get_project_root, load_config
 from .pl_module import TAMELIT, LightnightDataset
-from .comp_module import COMPAREVIT, HILAVIT
+from .comp_module import CompareModel, HILAVIT
 from .send_email import send_email
 
 __all__ = [
     "HILAVIT",
-    "COMPAREVIT",
+    "CompareModel",
     "AverageMeter",
     "Generic",
     "data_loader",

@@ -1,14 +1,14 @@
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Union
-import cv2
 
+import cv2
 import lightning.pytorch as pl
-from lightning.pytorch.loggers import WandbLogger
 import numpy as np
 import torch
 import torchmetrics
-import torchvision.transforms as transforms
 import torchshow as ts
+import torchvision.transforms as transforms
+from lightning.pytorch.loggers import WandbLogger
 from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
 from torch.utils.data import DataLoader
 
@@ -88,9 +88,7 @@ class TAMELIT(pl.LightningModule):
             percent_list=percent_list,
             stats=stats,
         )
-        self.metric_ROAD = metrics.ROAD(
-            self.generic, ROADMostRelevantFirst, stats=stats
-        )
+        self.metric_ROAD = metrics.ROAD(self.generic, ROADMostRelevantFirst)
         self.generic.requires_grad_(False)
         self.generic.attn_mech.requires_grad_()
         self.use_sam = use_sam
