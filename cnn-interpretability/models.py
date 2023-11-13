@@ -43,6 +43,7 @@ class ClassificationModel3D(nn.Module):
         self.Conv_3_bn = nn.BatchNorm3d(32)
         self.Conv_4 = nn.Conv3d(32, 64, 3)
         self.Conv_4_bn = nn.BatchNorm3d(64)
+        self.maxpool = nn.MaxPool3d(3)
         self.dense_1 = nn.Linear(5120, 128)
         self.dense_2 = nn.Linear(128, 64)
         self.dense_3 = nn.Linear(64, 2)  #1
@@ -58,7 +59,7 @@ class ClassificationModel3D(nn.Module):
         x = self.relu(self.Conv_3_bn(self.Conv_3(x)))
         x = F.max_pool3d(x, 2)
         x = self.relu(self.Conv_4_bn(self.Conv_4(x)))
-        x = F.max_pool3d(x, 3)
+        x = self.maxpool(x)
         x = x.view(x.size(0), -1)
         x = self.dropout(x)
         x = self.relu(self.dense_1(x))
