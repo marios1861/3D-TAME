@@ -252,12 +252,12 @@ def build_datasets(df, patients_train, patients_val, print_stats=True, normalize
     return train_dataset, val_dataset
 
 
-def build_loaders(train_dataset, val_dataset):
+def build_loaders(train_dataset, val_dataset, batch_size=5):
     """Build PyTorch data loaders from the datasets."""
     
     # In contrast to Korolev et al. 2017, we do not enforce one sample per class in each batch.
     # TODO: Maybe change batch size to 3 or 4. Check how this affects memory and accuracy.
-    train_loader = DataLoader(train_dataset, batch_size=5, shuffle=True, num_workers=multiprocessing.cpu_count(), pin_memory=torch.cuda.is_available())
-    val_loader = DataLoader(val_dataset, batch_size=5, shuffle=False, num_workers=multiprocessing.cpu_count(), pin_memory=torch.cuda.is_available())
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=multiprocessing.cpu_count(), pin_memory=torch.cuda.is_available())
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=multiprocessing.cpu_count(), pin_memory=torch.cuda.is_available())
 
     return train_loader, val_loader
