@@ -25,3 +25,4 @@ cnn-interpretability/data/
 */wandb/
 medical_transformers/models_and_misc/
 *.ckpt
+wandb
