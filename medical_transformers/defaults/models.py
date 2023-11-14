@@ -43,28 +43,28 @@ class Classifier(BaseModel):
     def forward(self, x, return_embedding=False):
         with autocast(self.use_mixed_precision):
             
-            if isinstance(x, list) and hasattr(cnn_models, self.backbone_type):
-                idx_crops = torch.cumsum(torch.unique_consecutive(
-                    torch.tensor([inp.shape[-1] for inp in x]),
-                    return_counts=True,
-                )[1], 0)
-                start_idx = 0
-                for end_idx in idx_crops:
-                    _out = self.backbone(torch.cat(x[start_idx: end_idx]))
-                    if start_idx == 0:
-                        x_emb = _out
-                    else:
-                        x_emb = torch.cat((x_emb, _out))
-                    start_idx = end_idx             
-            else:
-                x_emb = self.backbone(x)
+            # if isinstance(x, list) and hasattr(cnn_models, self.backbone_type):
+            #     idx_crops = torch.cumsum(torch.unique_consecutive(
+            #         torch.tensor([inp.shape[-1] for inp in x]),
+            #         return_counts=True,
+            #     )[1], 0)
+            #     start_idx = 0
+            #     for end_idx in idx_crops:
+            #         _out = self.backbone(torch.cat(x[start_idx: end_idx]))
+            #         if start_idx == 0:
+            #             x_emb = _out
+            #         else:
+            #             x_emb = torch.cat((x_emb, _out))
+            #         start_idx = end_idx             
+            # else:
+            x_emb = self.backbone(x)
                 
             x = self.fc(x_emb)
             
-            if return_embedding:
-                return x, x_emb        
-            else:
-                return x
+            # if return_embedding:
+            #     return x, x_emb        
+            # else:
+            return x
         
     def modify_first_layer(self, img_channels, pretrained):
         backbone_type = self.backbone.__class__.__name__
