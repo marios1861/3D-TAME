@@ -60,7 +60,6 @@ class TAMELIT(pl.LightningModule):
                 train_method=train_method,
             )
         else:
-            assert input_dim is not None
             self.generic = ut.get_new_model(
                 model,
                 input_dim,
@@ -69,8 +68,9 @@ class TAMELIT(pl.LightningModule):
                 version=attention_version,
                 masking=masking,
                 train_method=train_method,
+                num_classes=num_classes,
             )
-            img_size = list(input_dim[-3:])
+            img_size = list(input_dim[-3:]) if input_dim else img_size
         self.attention_version = attention_version
         # threshold is 0 because we use un-normalized logits to save on computation time
         self.train_accuracy = torchmetrics.Accuracy(

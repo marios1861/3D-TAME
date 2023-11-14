@@ -8,7 +8,7 @@ from . import generic_atten as ga
 
 
 class AttentionTAME(ga.AttentionMech):
-    def __init__(self, ft_size: List[torch.Size]):
+    def __init__(self, ft_size: List[torch.Size], num_classes=1000):
         super(AttentionTAME, self).__init__(ft_size)
         feat_height = ft_size[0][2] if ft_size[0][2] <= 56 else 56
         self.interpolate = lambda inp: F.interpolate(
@@ -38,7 +38,7 @@ class AttentionTAME(ga.AttentionMech):
         # noinspection PyTypeChecker
         self.fuser = nn.Conv2d(
             in_channels=fuse_channels,
-            out_channels=1000,
+            out_channels=num_classes,
             kernel_size=1,
             padding=0,
             bias=True,
@@ -72,7 +72,7 @@ class AttentionTAME(ga.AttentionMech):
 
 
 class Attention3DTAME(ga.AttentionMech):
-    def __init__(self, ft_size: List[torch.Size]):
+    def __init__(self, ft_size: List[torch.Size], num_classes=1000):
         super(Attention3DTAME, self).__init__(ft_size)
         if len(ft_size[0]) == 4:
             feat_height = ft_size[0][2] if ft_size[0][2] <= 56 else 56
@@ -107,7 +107,7 @@ class Attention3DTAME(ga.AttentionMech):
         # noinspection PyTypeChecker
         self.fuser = nn.Conv3d(
             in_channels=fuse_channels,
-            out_channels=1000,
+            out_channels=num_classes,
             kernel_size=1,
             padding=0,
             bias=True,

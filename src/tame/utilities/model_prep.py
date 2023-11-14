@@ -10,7 +10,7 @@ from .sam import SAM
 
 def get_new_model(
     mdl: nn.Module,
-    input_dim: Size,
+    input_dim: Optional[Size] = None,
     cfg: Optional[Dict[str, Any]] = None,
     model_name: Optional[str] = None,
     layers: Optional[List[str]] = None,
@@ -19,6 +19,7 @@ def get_new_model(
     train_method: Literal[
         "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
     ] = "new",
+    num_classes=1000,
 ) -> Generic:
     if cfg:
         model_name = cfg["model_name"]
@@ -38,6 +39,7 @@ def get_new_model(
         masking,
         train_method,
         input_dim=input_dim,
+        num_classes=num_classes,
     )
     mdl.cuda()
     return mdl

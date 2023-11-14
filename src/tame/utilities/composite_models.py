@@ -21,13 +21,14 @@ class Generic(nn.Module):
         self,
         name: str,
         mdl: nn.Module,
-        feature_layers: List[str],
+        feature_layers: Optional[List[str]],
         attention_version: str,
         masking: Literal["random", "diagonal", "max"] = "random",
         train_method: Literal[
             "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
         ] = "new",
         input_dim: Optional[torch.Size] = None,
+        num_classes=1000,
     ):
         """Args:
         mdl (nn.Module): the model which we would like to use for interpretability
@@ -37,8 +38,9 @@ class Generic(nn.Module):
         super().__init__()
         # get model feature extractor
         train_names, eval_names = get_graph_node_names(mdl)
-        if feature_layers == []:
+        if feature_layers == [] or feature_layers is None:
             print(train_names)
+            quit()
 
         output = (train_names[-1], eval_names[-1])
         if output[0] != output[1]:
@@ -64,9 +66,14 @@ class Generic(nn.Module):
         ft_size = [o.shape for o in out.values()]
 
         # Build AM
-        self.attn_mech = AMBuilder.create_attention(
-            name, mdl, attention_version, ft_size
-        )
+        if num_classes != 1000:
+            self.attn_mech = AMBuilder.create_attention(
+                name, mdl, attention_version, ft_size, num_classes=num_classes
+            )
+        else:
+            self.attn_mech = AMBuilder.create_attention(
+                name, mdl, attention_version, ft_size
+            )
         # Get loss and forward training method
         self.train_method: Literal[
             "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
