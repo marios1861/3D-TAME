@@ -1,3 +1,4 @@
+from warnings import warn
 import wandb
 import defaults
 from defaults.bases import *
@@ -231,7 +232,39 @@ class Trainer(BaseTrainer):
             if not self.save_best_model:
                 self.best_model = model_to_CPU_state(self.model)
         self.model.train()
-        
+
+    def get_train(self):
+        """Get testing model and dataset.
+        """
+        self.test_mode = False
+        self.restore_session = True
+        self.restore_only_model = True
+        self.set_models_precision(False)
+        try:
+            self.load_session(self.restore_only_model)
+        except:
+            warn("Full checkpoint not found... Proceeding with partial model (assuming transfer learning is ON)")
+        self.model.train()
+
+
+        return self.model, self.trainloader, self.trainloader.dataset.n_classes
+
+    def get_test(self):
+        """Get testing model and dataset.
+        """
+        self.test_mode = True
+        self.restore_session = True
+        self.restore_only_model = True
+        self.set_models_precision(False)
+        try:
+            self.load_session(self.restore_only_model)
+        except:
+            warn("Full checkpoint not found... Proceeding with partial model (assuming transfer learning is ON)")
+        self.model.eval()
+        dataloader = self.testloader
+
+        return self.model, dataloader, dataloader.dataset.n_classes
+
     def test(self, dataloader=None, **kwargs):
         """Test function.
         
@@ -240,6 +273,7 @@ class Trainer(BaseTrainer):
         """
         if not self.is_rank0: return
         if self.log_embeddings:
+            print("hey, building feature bank")
             self.build_feature_bank()
             
         self.test_mode = True
