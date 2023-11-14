@@ -108,8 +108,9 @@ class TAMELIT(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
         # it is independent of forward
-        images, labels = batch
-        logits = self.generic(images, labels)
+        images, _ = batch
+        logits, labels = self.generic(images)
+        
         masks = self.generic.get_a(labels)
         (
             loss,

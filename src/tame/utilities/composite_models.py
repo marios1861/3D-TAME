@@ -1,5 +1,5 @@
 # checked, should be working correctly
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union, Tuple
 from typing_extensions import Literal
 
 import torch
@@ -89,15 +89,15 @@ class Generic(nn.Module):
         self.masking: Literal["random", "diagonal", "max"] = masking
 
     def forward(
-        self, x: torch.Tensor, label: Optional[torch.LongTensor] = None
-    ) -> torch.Tensor:
+        self, x: torch.Tensor
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if self.train_method == "raw_normalize":
             x_norm = Generic.normalization(x)
         else:
             x_norm = x
 
         features: Dict[str, torch.Tensor] = self.body(x_norm)
-        x_norm = features.pop(self.output)
+        label = features.pop(self.output).argmax(dim=1)
 
         # features now only has the feature maps since we popped the output in case we are in eval mode
 
@@ -108,10 +108,9 @@ class Generic(nn.Module):
         # if in training mode we need to do another forward pass with our masked input as input
 
         if self.training:
-            assert label is not None
             logits = self.train_policy(a, label, x)
             self.logits = logits
-            return logits
+            return logits, label
         else:
             self.logits = x_norm
             return x_norm
