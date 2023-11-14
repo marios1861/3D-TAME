@@ -121,7 +121,10 @@ class Generic(nn.Module):
         masks: torch.Tensor, logits: torch.Tensor, N: int
     ) -> torch.Tensor:
         """Select the N masks with the max logits"""
-        max_indexes = logits.topk(N)[1]
+        if logits.size(0) < N:
+            max_indexes = logits.topk(logits.size(0))[1]
+        else:
+            max_indexes = logits.topk(N)[1]
         return masks[max_indexes, :, :]
 
     def get_c(self, labels: torch.Tensor) -> torch.Tensor:
