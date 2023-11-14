@@ -97,7 +97,8 @@ class Generic(nn.Module):
             x_norm = x
 
         features: Dict[str, torch.Tensor] = self.body(x_norm)
-        label = features.pop(self.output).argmax(dim=1)
+        old_logits = features.pop(self.output)
+        label = old_logits.argmax(dim=1)
 
         # features now only has the feature maps since we popped the output in case we are in eval mode
 
@@ -112,8 +113,8 @@ class Generic(nn.Module):
             self.logits = logits
             return logits, label
         else:
-            self.logits = x_norm
-            return x_norm
+            self.logits = old_logits
+            return old_logits
 
     @staticmethod
     def select_max_masks(
