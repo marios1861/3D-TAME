@@ -71,7 +71,8 @@ class CompareModel(pl.LightningModule):
         }
         if raw_model is None:
             import timm
-            self.raw_model = timm.create_model('deit_tiny_patch16_224', pretrained=True)
+
+            self.raw_model = timm.create_model("deit_tiny_patch16_224", pretrained=True)
         else:
             self.raw_model = raw_model
         self.raw_model.fp_count = 0
@@ -108,7 +109,7 @@ class CompareModel(pl.LightningModule):
             self.cam_model = cam_method[name](
                 model=self.raw_model,
                 target_layers=target_layers,  # type: ignore
-                reshape_transform=reshape_transform if raw_model is None else None,  # type: ignore
+                reshape_transform=reshape_transform if raw_model is None or "vit" in mdl_name else None,  # type: ignore
                 use_cuda=True,
             )
         if name == "scorecam" or name == "ablationcam":
@@ -163,7 +164,7 @@ class CompareModel(pl.LightningModule):
                         self.ICs[2],
                     ]
                 ]
-                data_road = [[self.ROAD]]
+                data_road = [[self.ROADs]]
                 self.logger.log_table(key="ADIC", columns=columns_adic, data=data)
                 self.logger.log_table(key="ROAD", columns=columns_road, data=data_road)
             else:

@@ -215,7 +215,7 @@ def normalizeMinMax(cam_maps: torch.Tensor) -> torch.Tensor:
         # now both of these tensors are 1-dimensional holding the min and the max
         # of each batch
         cam_maps -= cam_map_mins.view(-1, 1, 1, 1)
-        cam_maps /= (cam_map_maxs - cam_map_mins).view(-1, 1, 1, 1)
+        cam_maps /= (cam_map_maxs - cam_map_mins + 1e-10).view(-1, 1, 1, 1)
     else:
         for _ in range(0, 4):
             cam_map_mins, _ = cam_map_mins.min(dim=-1)

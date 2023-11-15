@@ -149,8 +149,9 @@ class TAMELIT(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         # this is the validation loop
-        images, labels = batch
-        logits = self.generic(images, labels)
+        images, _ = batch
+        logits = self.generic(images)
+        labels = logits.argmax(dim=1)
         masks = self.generic.get_a(labels)
         (
             loss,

@@ -227,7 +227,6 @@ class VisionTransformer(nn.Module):
     def interpolate_pos_encoding(self, x, pos_embed):
         npatch = x.shape[1] - 1
         N = pos_embed.shape[1] - 1
-        print(x.shape, pos_embed.shape)
         # if npatch == N:
         return pos_embed
         class_emb = pos_embed[:, 0]
