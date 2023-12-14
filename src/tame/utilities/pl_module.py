@@ -275,6 +275,24 @@ class TAMELIT(pl.LightningModule):
         np_mask = cv2.applyColorMap(np_mask, cv2.COLORMAP_JET)
         mask_image = cv2.addWeighted(np_mask, 0.5, opencvImage, 0.5, 0)
         cv2.imwrite(f"_torchshow/{model_name}/cv_masked_image{id}.png", mask_image)
+        
+    @torch.no_grad()
+    def get_3dmask(self, image):
+        self.generic.masking = "diagonal"
+        self.generic.eval()
+        image = image.unsqueeze(0).to(self.device)
+        logits = self.generic(image)
+        logits = logits.softmax(dim=1)
+        chosen_logits, model_truth = logits.max(dim=1)
+        mask = self.generic.get_c(model_truth)
+        mask = metrics.normalizeMinMax(mask)
+        mask = torch.nn.functional.interpolate(
+            mask,
+            size=image.shape[-3:],
+            mode="trilinear",
+            align_corners=False,
+        ).squeeze(0)
+        return mask
 
     def test_step(self, batch, batch_idx):
         # this is the test loop

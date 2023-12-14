@@ -129,16 +129,13 @@ class CompareModel(pl.LightningModule):
         self.metric_ROAD = metrics.ROAD(self.raw_model, ROADMostRelevantFirst)
         self.count_fp = count_fp
 
-    def gen_explanation(self, dataloader, id):
-        image, _ = dataloader.dataset[id]
-        image = image.unsqueeze(0)
-        mask = torch.tensor(self.cam_model(input_tensor=image))
-        image = image.squeeze()
-        save_heatmap(
-            mask,
-            image,
-            Path(".") / "examples" / f"vit_{self.method}_{id}.jpg",
-        )
+    def get_3dmask(self, image):
+        with torch.set_grad_enabled(True):
+            image = image.unsqueeze(0)
+            image.requires_grad = True
+            print(image.requires_grad)
+            mask = self.cam_model(input_tensor=image)
+            return mask
 
     def on_test_epoch_end(self):
         self.ADs, self.ICs = self.metric_AD_IC.get_results()
