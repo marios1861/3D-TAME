@@ -5,8 +5,10 @@ from typing import List, Literal, Optional, Tuple, Type, Union
 import cv2
 import numpy as np
 import torch
+import torchshow as ts
 import torchvision.transforms as transforms
-from pytorch_grad_cam.metrics.road import ROADLeastRelevantFirst, ROADMostRelevantFirst
+from pytorch_grad_cam.metrics.road import (ROADLeastRelevantFirst,
+                                           ROADMostRelevantFirst)
 from pytorch_grad_cam.utils.model_targets import RawScoresOutputTarget
 from sklearn import metrics
 from torch.nn import functional as F
@@ -22,10 +24,12 @@ class AD_IC:
     percent_list: List[float] = field(default_factory=lambda: [0.0, 0.5, 0.85])
     stats: Optional[Tuple[np.ndarray, np.ndarray]] = None
     masking: Literal["random", "diagonal", "max"] = "diagonal"
+    print_adic: bool = False
 
     def __post_init__(self):
         self.chosen_logits_list = []
         self.new_logits_list = []
+        self.counter = 0
 
     @torch.no_grad()
     def __call__(
@@ -44,6 +48,12 @@ class AD_IC:
             self.normalized_data,
             self.stats,
         )
+        print_masks = [masked_images[0].squeeze() for masked_images in masked_images_list]
+        ts.save(
+            print_masks,
+            f"_torchshow/eval/masked_images{self.counter}.png",
+        )
+        self.counter += 1
         new_logits_list = [
             new_logits.softmax(dim=1).gather(1, model_truth.unsqueeze(-1)).squeeze()
             for new_logits in [

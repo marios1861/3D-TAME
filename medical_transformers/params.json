@@ -110,10 +110,10 @@
                                         "pin_memory" : true, 
                                         "drop_last" : true, 
                                         "persistent_workers" : true},
-                       "testloader" : {"batch_size" : 64, 
+                       "testloader" : {"batch_size" : 32, 
                                         "num_workers" : 4,
                                         "prefetch_factor" : 2,
-                                        "shuffle": true, 
+                                        "shuffle": false, 
                                         "pin_memory" : true, 
                                         "drop_last" : false, 
                                         "persistent_workers" : false}

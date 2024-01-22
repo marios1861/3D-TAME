@@ -17,6 +17,9 @@ from pytorch_grad_cam import (
 )
 from pytorch_grad_cam.ablation_layer import AblationLayer, AblationLayerVit
 from pytorch_grad_cam.metrics.road import ROADLeastRelevantFirst, ROADMostRelevantFirst
+import torchshow as ts
+import cv2
+import numpy as np
 
 from tame.masked_print import save_heatmap
 from tame.transformer_explainability.baselines.ViT.ViT_explanation_generator import LRP
@@ -100,8 +103,6 @@ def on_test_epoch_end(ADs, ICs, logger, ROADs=None, ROADs2=None):
                 )
 
 
-
-
 def reshape_transform(tensor, height=14, width=14):
     result = tensor[:, 1:, :].reshape(tensor.size(0), height, width, tensor.size(2))
 
@@ -131,6 +132,7 @@ class CompareModel(pl.LightningModule):
         eval_length: str = "long",
         count_fp=True,
         LeRF=False,
+        print_adic=False,
     ):
         super().__init__()
         self.method = name
@@ -201,20 +203,61 @@ class CompareModel(pl.LightningModule):
             percent_list=percent_list,
             normalized_data=normalized_data,
             stats=stats,
+            print_adic=print_adic,
         )
+        self.percent_list = percent_list
         self.metric_ROAD = metrics.ROAD(self.raw_model, ROADMostRelevantFirst)
         if LeRF:
             self.LeRF = True
             self.metric_ROAD2 = metrics.ROAD(self.raw_model, ROADLeastRelevantFirst)
         self.count_fp = count_fp
 
-    def get_3dmask(self, image):
-        with torch.set_grad_enabled(True):
-            image = image.unsqueeze(0)
-            image.requires_grad = True
-            print(image.requires_grad)
-            mask = self.cam_model(input_tensor=image)
-            return mask
+    def save_masked_image(
+        self, image, id, ground_truth, ground_truth_label, mdl_truth, mdl_truth_label
+    ):
+        image = image.unsqueeze(0).to(self.device)
+        ts.save(image, f"_torchshow/{self.method}/{id}/image{id}.png")
+        mask = (
+            torch.tensor(self.cam_model(input_tensor=image))
+            .unsqueeze(dim=1)
+            .to(self.device)
+        )
+        mask = metrics.normalizeMinMax(mask)
+        masked_images = metrics.get_masked_inputs(
+            image,
+            mask,
+            self.img_size,
+            self.percent_list,
+            "diagonal",
+            False,
+        )
+        masked_images = [masked_image.squeeze() for masked_image in masked_images]
+        ts.save(
+            masked_images,
+            f"_torchshow/{self.method}/{id}/masked_images.png",
+        )
+        image = metrics.normalizeMinMax(image)
+        ts.save(mask, f"_torchshow/{self.method}/{id}/small_mask{id}.png")
+        mask = torch.nn.functional.interpolate(
+            mask,
+            size=(self.img_size, self.img_size),
+            mode="bilinear",
+            align_corners=False,
+        )
+        ts.save(mask, f"_torchshow/{self.method}/{id}/big_mask{id}.png")
+        ts.save(mask * image, f"_torchshow/{self.method}/{id}/masked_image{id}.png")
+        opencvImage = cv2.cvtColor(
+            image.squeeze().permute(1, 2, 0).cpu().numpy(), cv2.COLOR_RGB2BGR
+        )
+        opencvImage = (np.asarray(opencvImage, np.float32) * 255).astype(np.uint8)
+        np_mask = np.array(mask.squeeze().cpu().numpy() * 255, dtype=np.uint8)
+        np_mask = cv2.applyColorMap(np_mask, cv2.COLORMAP_JET)
+        mask_image = cv2.addWeighted(np_mask, 0.5, opencvImage, 0.5, 0)
+        cv2.imwrite(
+            f"_torchshow/{self.method}/{id}/mdl_{mdl_truth_label}({mdl_truth})_gr{ground_truth_label}({ground_truth})_{id}.png",
+            mask_image,
+        )
+        
 
     def on_test_epoch_end(self):
         ADs, ICs = self.metric_AD_IC.get_results()

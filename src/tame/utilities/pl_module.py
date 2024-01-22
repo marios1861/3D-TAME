@@ -119,6 +119,7 @@ class TAMELIT(pl.LightningModule):
         num_classes: int = 1000,
         eval_length: Literal["long", "short"] = "long",
         LeRF=False,
+        print_adic: bool = False,
     ):
         super().__init__()
         if optimizer_type == "OLDSGD":
@@ -161,10 +162,12 @@ class TAMELIT(pl.LightningModule):
             normalized_data=normalized_data,
             percent_list=percent_list,
             stats=stats,
+            print_adic=print_adic,
         )
         if LeRF:
             self.LeRF = True
             self.metric_ROAD2 = metrics.ROAD(self.generic, ROADLeastRelevantFirst)
+        self.percent_list = percent_list
         self.metric_ROAD = metrics.ROAD(self.generic, ROADMostRelevantFirst)
         self.generic.requires_grad_(False)
         self.generic.attn_mech.requires_grad_()
@@ -264,25 +267,60 @@ class TAMELIT(pl.LightningModule):
         on_test_epoch_end(ADs, ICs, self.logger, ROADs, ROADs2)
 
     @torch.no_grad()
-    def save_masked_image(self, image, id, model_name):
+    def save_masked_image(
+        self,
+        image,
+        id,
+        model_name,
+        ground_truth,
+        ground_truth_label,
+        mdl_truth_labels,
+        select_mask=None
+    ):
         self.generic.masking = "diagonal"
         self.generic.eval()
         image = image.unsqueeze(0).to(self.device)
-        ts.save(image, f"_torchshow/{model_name}/image{id}.png")
+        ts.save(image, f"_torchshow/{model_name}/{id}/image{id}.png")
         logits = self.generic(image)
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
+        model_truth = select_mask if select_mask else model_truth.item()
         mask = self.generic.get_c(model_truth)
         mask = metrics.normalizeMinMax(mask)
-        ts.save(mask, f"_torchshow/{model_name}/small_mask{id}.png")
+        masked_images = metrics.get_masked_inputs(
+            image,
+            mask,
+            self.img_size,
+            self.percent_list,
+            "diagonal",
+            True,
+        )
+        masked_images = [masked_image.squeeze() for masked_image in masked_images]
+        ts.save(
+            masked_images,
+            f"_torchshow/{model_name}/{id}/masked_images.png",
+        )
+        image = metrics.normalizeMinMax(image)
+        # mask_array = (mask.squeeze().cpu() * 255).byte().numpy()
+
+        # # Apply histogram equalization
+        # eq_mask = cv2.equalizeHist(mask_array)
+
+        # # Convert the equalized NumPy array back to a float tensor and add the batch and channel dimensions
+        # mask = (
+        #     torch.tensor(eq_mask, dtype=torch.float32).unsqueeze(0).unsqueeze(0).cuda()
+        #     / 255.0
+        # )
+        ts.save(mask, f"_torchshow/{model_name}/{id}/small_mask{id}.png")
         mask = torch.nn.functional.interpolate(
             mask,
             size=(self.img_size, self.img_size),
             mode="bilinear",
             align_corners=False,
         )
-        ts.save(mask, f"_torchshow/{model_name}/big_mask{id}.png")
-        ts.save(mask * image, f"_torchshow/{model_name}/masked_image{id}.png")
+
+        ts.save(mask, f"_torchshow/{model_name}/{id}/big_mask{id}.png")
+        ts.save(mask * image, f"_torchshow/{model_name}/{id}/masked_image{id}.png")
         opencvImage = cv2.cvtColor(
             image.squeeze().permute(1, 2, 0).cpu().numpy(), cv2.COLOR_RGB2BGR
         )
@@ -290,25 +328,10 @@ class TAMELIT(pl.LightningModule):
         np_mask = np.array(mask.squeeze().cpu().numpy() * 255, dtype=np.uint8)
         np_mask = cv2.applyColorMap(np_mask, cv2.COLORMAP_JET)
         mask_image = cv2.addWeighted(np_mask, 0.5, opencvImage, 0.5, 0)
-        cv2.imwrite(f"_torchshow/{model_name}/cv_masked_image{id}.png", mask_image)
-        
-    @torch.no_grad()
-    def get_3dmask(self, image):
-        self.generic.masking = "diagonal"
-        self.generic.eval()
-        image = image.unsqueeze(0).to(self.device)
-        logits = self.generic(image)
-        logits = logits.softmax(dim=1)
-        chosen_logits, model_truth = logits.max(dim=1)
-        mask = self.generic.get_c(model_truth)
-        mask = metrics.normalizeMinMax(mask)
-        mask = torch.nn.functional.interpolate(
-            mask,
-            size=image.shape[-3:],
-            mode="trilinear",
-            align_corners=False,
-        ).squeeze(0)
-        return mask
+        cv2.imwrite(
+            f"_torchshow/{model_name}/{id}/mdl_{mdl_truth_labels[model_truth]}({model_truth})_gr{ground_truth_label}({ground_truth})_{id}.png",
+            mask_image,
+        )
 
     def test_step(self, batch, batch_idx):
         # this is the test loop

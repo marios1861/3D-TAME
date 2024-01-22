@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from . import generic_atten as ga
+from itertools import islice
 
 
 class AttentionTAME(ga.AttentionMech):
@@ -47,11 +48,12 @@ class AttentionTAME(ga.AttentionMech):
     def forward(self, features):
         # Fusion Strategy
         feature_maps = features
+        num_to_skip = max(0, len(list(self.convs)) - len(feature_maps))
         # Now all feature map sets are of the same HxW
         # conv
-        class_maps = [op(feature) for op, feature in zip(self.convs, feature_maps)]
+        class_maps = [op(feature) for op, feature in zip(islice(self.convs, num_to_skip, None), feature_maps)]
         # batch norm
-        class_maps = [op(feature) for op, feature in zip(self.bns, class_maps)]
+        class_maps = [op(feature) for op, feature in zip(islice(self.bns, num_to_skip, None), class_maps)]
         # add (skip connection)
         class_maps = [
             class_map + feature_map
