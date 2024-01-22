@@ -90,14 +90,15 @@ class ROAD:
         Type[ROADLeastRelevantFirst],
     ]
     percent_list: List[int] = field(
-        default_factory=lambda: [100 - pct for pct in [90, 50, 10]]
+        default_factory=lambda: [100 - pct for pct in [10, 20, 30, 40, 50, 70, 90]]
     )
 
     def __post_init__(self):
         self.target = None
-        self.metric = AverageMeter(type="avg")
+        self.metric: List[AverageMeter] = []
         self.roads: List[Union[ROADMostRelevantFirst, ROADLeastRelevantFirst]] = []
         for percentile in self.percent_list:
+            self.metric.append(AverageMeter(type="avg"))
             self.roads.append(self.road(percentile))
 
     @torch.no_grad()
@@ -109,22 +110,18 @@ class ROAD:
     ):
         if self.target is None:
             self.target = [RawScoresOutputTarget() for _ in range(input.size(0))]
-        scores = []
         for i in range(len(self.percent_list)):
-            logits = torch.tensor(self.roads[i](
-                input, masks, self.target, self.model  # type: ignore
-            ))
-            scores.append(
-                logits[torch.arange(logits.size(0)), model_truth.to(logits.device)].mean()
+            scores = self.roads[i](
+                input, masks, self.target, self.model, return_diff=False  # type: ignore
             )
-        self._updateAcc(torch.tensor(scores))
+            self._updateAcc(model_truth.cpu(), torch.tensor(scores), i)
 
-    def _updateAcc(self, scores: torch.Tensor):
-        area = torch.trapezoid(scores, torch.tensor(self.percent_list))
-        self.metric.update(area.item())
+    def _updateAcc(self, preds: torch.Tensor, scores: torch.Tensor, i: int):
+        _, new_preds = scores.max(dim=1)
+        self.metric[i].update(((preds == new_preds).sum() / preds.shape[0]).item())
 
-    def get_results(self) -> float:
-        return self.metric()
+    def get_results(self) -> List[float]:
+        return [metric() for metric in self.metric]
 
 
 def drop_Npercent(cam_map, percent):
@@ -165,7 +162,8 @@ def show_cam_on_image(
     By default the heatmap is in BGR format.
     :param img: The base image in RGB or BGR format.
     :param mask: The cam mask.
-    :param use_rgb: Whether to use an RGB or BGR heatmap, this should be set to True if 'img' is in RGB format.
+    :param use_rgb: Whether to use an RGB or BGR heatmap, this should be set to True if
+    'img' is in RGB format.
     :param colormap: The OpenCV colormap to be used.
     :returns: The default image with the cam overlay.
     """
@@ -236,7 +234,6 @@ def get_masked_inputs(
     normalized_data: bool = True,
     stats: Optional[Tuple[np.ndarray, np.ndarray]] = None,
 ) -> List[torch.Tensor]:
-
     if masks.ndim == 4:
         B, C, _, _ = masks.size()
         if masking == "random":
@@ -244,7 +241,8 @@ def get_masked_inputs(
             masks = masks.diagonal().permute(2, 0, 1).unsqueeze(1)
         _, C, _, _ = masks.size()
         assert C == 1
-
+        if isinstance(img_size, list):
+            img_size = img_size[0]
         masks = F.interpolate(
             masks, size=(img_size, img_size), mode="bilinear", align_corners=False
         )

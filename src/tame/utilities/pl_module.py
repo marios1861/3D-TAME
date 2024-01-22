@@ -9,7 +9,7 @@ import torchmetrics
 import torchshow as ts
 import torchvision.transforms as transforms
 from lightning.pytorch.loggers import WandbLogger
-from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst
+from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst, ROADLeastRelevantFirst
 from torch.utils.data import DataLoader
 
 from tame import utilities as ut
@@ -17,6 +17,79 @@ from tame.utilities.sam import SAM
 
 from . import metrics
 from .load_data import MyDataset
+
+
+def on_test_epoch_end(ADs, ICs, logger, ROADs=None, ROADs2=None):
+    if type(logger) is WandbLogger:
+        columns_adic = [
+            "AD 100%",
+            "IC 100%",
+            "AD 50%",
+            "IC 50%",
+            "AD 15%",
+            "IC 15%",
+        ]
+        data = [
+            [
+                ADs[0],
+                ICs[0],
+                ADs[1],
+                ICs[1],
+                ADs[2],
+                ICs[2],
+            ]
+        ]
+        logger.log_table(key="ADIC", columns=columns_adic, data=data)
+        if ROADs is not None:
+            columns_road = [
+                "ROAD 10%",
+                "ROAD 20%",
+                "ROAD 30%",
+                "ROAD 40%",
+                "ROAD 50%",
+                "ROAD 70%",
+                "ROAD 90%",
+            ]
+            data_road = [ROADs]
+            logger.log_table(key="ROAD", columns=columns_road, data=data_road)
+            if ROADs2 is not None:
+                logger.log_table(key="ROAD2", columns=columns_road, data=[ROADs2])
+
+    else:
+        logger.log_dict(
+            {
+                "AD 100%": torch.tensor(ADs[0]),
+                "IC 100%": torch.tensor(ICs[0]),
+                "AD 50%": torch.tensor(ADs[1]),
+                "IC 50%": torch.tensor(ICs[1]),
+                "AD 15%": torch.tensor(ADs[2]),
+                "IC 15%": torch.tensor(ICs[2]),
+            }
+        )
+        if ROADs is not None:
+            logger.log_dict(
+                {
+                    "ROAD 10%": torch.tensor(ROADs[0]),
+                    "ROAD 20%": torch.tensor(ROADs[1]),
+                    "ROAD 30%": torch.tensor(ROADs[2]),
+                    "ROAD 40%": torch.tensor(ROADs[3]),
+                    "ROAD 50%": torch.tensor(ROADs[4]),
+                    "ROAD 70%": torch.tensor(ROADs[5]),
+                    "ROAD 90%": torch.tensor(ROADs[6]),
+                }
+            )
+            if ROADs2 is not None:
+                logger.log_dict(
+                    {
+                        "ROAD2 10%": torch.tensor(ROADs2[0]),
+                        "ROAD2 20%": torch.tensor(ROADs2[1]),
+                        "ROAD2 30%": torch.tensor(ROADs2[2]),
+                        "ROAD2 40%": torch.tensor(ROADs2[3]),
+                        "ROAD2 50%": torch.tensor(ROADs2[4]),
+                        "ROAD2 70%": torch.tensor(ROADs2[5]),
+                        "ROAD2 90%": torch.tensor(ROADs2[6]),
+                    }
+                )
 
 
 # define the LightningModule
@@ -45,6 +118,7 @@ class TAMELIT(pl.LightningModule):
         percent_list: List[float] = [0.0, 0.5, 0.85],
         num_classes: int = 1000,
         eval_length: Literal["long", "short"] = "long",
+        LeRF=False,
     ):
         super().__init__()
         if optimizer_type == "OLDSGD":
@@ -88,6 +162,9 @@ class TAMELIT(pl.LightningModule):
             percent_list=percent_list,
             stats=stats,
         )
+        if LeRF:
+            self.LeRF = True
+            self.metric_ROAD2 = metrics.ROAD(self.generic, ROADLeastRelevantFirst)
         self.metric_ROAD = metrics.ROAD(self.generic, ROADMostRelevantFirst)
         self.generic.requires_grad_(False)
         self.generic.attn_mech.requires_grad_()
@@ -176,76 +253,15 @@ class TAMELIT(pl.LightningModule):
         self.generic.masking = "diagonal"
 
     def on_test_epoch_end(self):
-        self.ADs, self.ICs = self.metric_AD_IC.get_results()
         self.generic.masking = self.masking_state
+        ADs, ICs = self.metric_AD_IC.get_results()
+        ROADs = None
+        ROADs2 = None
         if self.eval_length == "long":
-            self.ROAD = self.metric_ROAD.get_results()
-            if type(self.logger) is WandbLogger:
-                columns_adic = [
-                    "AD 100%",
-                    "IC 100%",
-                    "AD 50%",
-                    "IC 50%",
-                    "AD 15%",
-                    "IC 15%",
-                ]
-                columns_road = ["area"]
-                data = [
-                    [
-                        self.ADs[0],
-                        self.ICs[0],
-                        self.ADs[1],
-                        self.ICs[1],
-                        self.ADs[2],
-                        self.ICs[2],
-                    ]
-                ]
-                data_road = [[self.ROAD]]
-                self.logger.log_table(key="ADIC", columns=columns_adic, data=data)
-                self.logger.log_table(key="ROAD", columns=columns_road, data=data_road)
-            else:
-                self.log_dict(
-                    {
-                        "AD 100%": torch.tensor(self.ADs[0]),
-                        "IC 100%": torch.tensor(self.ICs[0]),
-                        "AD 50%": torch.tensor(self.ADs[1]),
-                        "IC 50%": torch.tensor(self.ICs[1]),
-                        "AD 15%": torch.tensor(self.ADs[2]),
-                        "IC 15%": torch.tensor(self.ICs[2]),
-                        "ROAD": torch.tensor(self.ROAD),
-                    }
-                )
-        else:
-            if type(self.logger) is WandbLogger:
-                columns_adic = [
-                    "AD 100%",
-                    "IC 100%",
-                    "AD 50%",
-                    "IC 50%",
-                    "AD 15%",
-                    "IC 15%",
-                ]
-                data = [
-                    [
-                        self.ADs[0],
-                        self.ICs[0],
-                        self.ADs[1],
-                        self.ICs[1],
-                        self.ADs[2],
-                        self.ICs[2],
-                    ]
-                ]
-                self.logger.log_table(key="ADIC", columns=columns_adic, data=data)
-            self.log_dict(
-                {
-                    "AD 100%": torch.tensor(self.ADs[0]),
-                    "IC 100%": torch.tensor(self.ICs[0]),
-                    "AD 50%": torch.tensor(self.ADs[1]),
-                    "IC 50%": torch.tensor(self.ICs[1]),
-                    "AD 15%": torch.tensor(self.ADs[2]),
-                    "IC 15%": torch.tensor(self.ICs[2]),
-                }
-            )
+            ROADs = self.metric_ROAD.get_results()
+            if self.LeRF is True:
+                ROADs2 = self.metric_ROAD2.get_results()
+        on_test_epoch_end(ADs, ICs, self.logger, ROADs, ROADs2)
 
     @torch.no_grad()
     def save_masked_image(self, image, id, model_name):
@@ -320,6 +336,8 @@ class TAMELIT(pl.LightningModule):
                 )
             masks = masks.squeeze().cpu().detach().numpy()
             self.metric_ROAD(images, model_truth, masks)
+            if self.LeRF is True:
+                self.metric_ROAD2(images, model_truth, masks)
 
     def configure_optimizers(self):
         optimizer = ut.get_optim(
