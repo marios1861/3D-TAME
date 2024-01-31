@@ -13,6 +13,7 @@ from pytorch_grad_cam.metrics.road import ROADMostRelevantFirst, ROADLeastReleva
 from torch.utils.data import DataLoader
 
 from tame import utilities as ut
+from tame.utilities.composite_models import Generic, Arrangement
 from tame.utilities.sam import SAM
 
 from . import metrics
@@ -103,16 +104,14 @@ class TAMELIT(pl.LightningModule):
         input_dim: Optional[torch.Size] = None,
         stats: Optional[Tuple[np.ndarray, np.ndarray]] = None,
         attention_version: str = "TAME",
-        masking: Literal["random", "diagonal", "max"] = "random",
+        masking: Generic.masking_types = "random",
         normalized_data=True,
-        train_method: Literal[
-            "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
-        ] = "new",
-        optimizer_type: Literal["Adam", "AdamW", "RMSProp", "SGD", "OLDSGD"] = "SGD",
+        train_method: Arrangement.arrangement_types = "new",
+        optimizer_type: ut.optimizer_types = "SGD",
         use_sam: bool = False,
         momentum: float = 0.9,
         weight_decay: float = 5.0e-4,
-        schedule_type: Literal["equal", "new_classic", "old_classic"] = "equal",
+        schedule_type: ut.scheduler_types = "equal",
         lr: float = 1.0e-3,
         img_size: Union[int, List[int]] = 224,
         percent_list: List[float] = [0.0, 0.5, 0.85],
@@ -252,7 +251,7 @@ class TAMELIT(pl.LightningModule):
         )
 
     def on_test_epoch_start(self):
-        self.masking_state: Literal["random", "max", "diagonal"] = self.generic.masking
+        self.masking_state = self.generic.masking
         self.generic.masking = "diagonal"
 
     def on_test_epoch_end(self):
@@ -339,7 +338,7 @@ class TAMELIT(pl.LightningModule):
         logits = self.generic(images)
         logits = logits.softmax(dim=1)
         chosen_logits, model_truth = logits.max(dim=1)
-        masks = self.generic.get_c(model_truth)
+        masks = self.generic.get_a(model_truth)
         masks = metrics.normalizeMinMax(masks)
         self.metric_AD_IC(images, chosen_logits, model_truth, masks)
         if self.eval_length == "long":

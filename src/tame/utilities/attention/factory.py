@@ -1,4 +1,4 @@
-from typing import ClassVar, Dict, List, Type
+from typing import ClassVar, Dict, List, Literal, Type
 
 import torch
 import torch.nn as nn
@@ -25,7 +25,21 @@ from tame.utilities.attention.tattentionv3 import TAttentionV3
 
 class AMBuilder(object):
     r"""The attention mechanism component of Generic"""
-    versions: ClassVar[Dict[str, Type[AttentionMech]]] = {
+    version_types = Literal[
+        "3D-TAME",
+        "TAME",
+        "Noskipconnection",
+        "NoskipNobatchnorm",
+        "Sigmoidinfeaturebranch",
+        "TAttentionV1",
+        "TAttentionV1_1",
+        "TAttentionV1_2",
+        "TAttentionV2",
+        "TAttentionV2_1",
+        "TAttentionV2_2",
+        "TAttentionV3",
+    ]
+    versions: ClassVar[Dict[version_types, Type[AttentionMech]]] = {
         "3D-TAME": Attention3DTAME,
         "TAME": AttentionTAME,
         "Noskipconnection": AttentionV3d2dd1,
@@ -41,14 +55,21 @@ class AMBuilder(object):
     }
 
     @classmethod
-    def register_attention(cls, name: str, new_attention: Type[AttentionMech]):
+    def register_attention(
+        cls, name: version_types, new_attention: Type[AttentionMech]
+    ):
         cls.versions.update({name: new_attention})
 
     @classmethod
     def create_attention(
-        cls, mdl_name: str, mdl: nn.Module, version: str, ft_size: List[torch.Size], num_classes=1000
+        cls,
+        mdl_name: str,
+        mdl: nn.Module,
+        version: version_types,
+        ft_size: List[torch.Size],
+        num_classes=1000,
     ) -> nn.Module:
-        """ Build Attention mechanism based on version and model
+        """Build Attention mechanism based on version and model
 
         Args:
             mdl_name (str): name of mdl

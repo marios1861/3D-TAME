@@ -4,8 +4,14 @@ from torch import nn, optim, Size
 from torch.optim import lr_scheduler
 from torchvision import models
 
+from tame.utilities.attention.arrangement import Arrangement
+
 from .composite_models import Generic
 from .sam import SAM
+
+
+optimizer_types = Literal["Adam", "AdamW", "RMSProp", "SGD", "OLDSGD"]
+scheduler_types = Literal["equal", "new_classic", "old_classic"]
 
 
 def get_new_model(
@@ -15,10 +21,8 @@ def get_new_model(
     model_name: Optional[str] = None,
     layers: Optional[List[str]] = None,
     version: Optional[str] = None,
-    masking: Optional[Literal["random", "diagonal", "max"]] = "random",
-    train_method: Literal[
-        "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
-    ] = "new",
+    masking: Optional[Generic.masking_types] = "random",
+    train_method: Arrangement.arrangement_types = "new",
     num_classes=1000,
 ) -> Generic:
     if cfg:
@@ -50,10 +54,8 @@ def get_model(
     model_name: Optional[str] = None,
     layers: Optional[List[str]] = None,
     version: Optional[str] = None,
-    masking: Optional[Literal["random", "diagonal", "max"]] = "random",
-    train_method: Literal[
-        "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
-    ] = "new",
+    masking: Optional[Generic.masking_types] = "random",
+    train_method: Arrangement.arrangement_types = "new",
 ) -> Generic:
     if cfg:
         model_name = cfg["model_name"]
@@ -76,15 +78,13 @@ def pl_get_config(
     model_name: str,
     layers: List[str],
     attention_version: str,
-    masking: Literal["random", "diagonal", "max"],
-    train_method: Literal[
-        "new", "renormalize", "raw_normalize", "layernorm", "batchnorm"
-    ],
+    masking: Generic.masking_types,
+    train_method: Arrangement.arrangement_types,
     net_type: Literal["cnn", "transformer"],
-    optimizer_type: Literal["Adam", "AdamW", "RMSProp", "SGD", "OLDSGD"],
+    optimizer_type: optimizer_types,
     momentum: float,
     weight_decay: float,
-    schedule_type: Literal["equal", "new_classic", "old_classic"],
+    schedule_type: scheduler_types,
     lr: float,
     epochs: int,
 ) -> Dict:
@@ -115,9 +115,7 @@ def get_optim(
     cfg: Optional[Dict[str, Any]] = None,
     use_sam: bool = False,
     momentum: Optional[float] = None,
-    optimizer_type: Optional[
-        Literal["Adam", "AdamW", "RMSProp", "SGD", "OLDSGD"]
-    ] = None,
+    optimizer_type: Optional[optimizer_types] = None,
     weight_decay: Optional[float] = None,
 ) -> optim.Optimizer:
     if cfg:
@@ -200,7 +198,7 @@ def get_optim(
 def get_schedule(
     optimizer: optim.Optimizer,
     currect_epoch: int,
-    schedule_type: Optional[Literal["equal", "new_classic", "old_classic"]] = None,
+    schedule_type: Optional[scheduler_types] = None,
     lr: Optional[float] = None,
     epochs: Optional[int] = None,
     steps_per_epoch: Optional[int] = None,
